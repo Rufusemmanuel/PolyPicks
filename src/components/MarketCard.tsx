@@ -1,0 +1,118 @@
+﻿import { differenceInMilliseconds, formatDistanceToNow } from 'date-fns';
+import { useEffect, useMemo, useState } from 'react';
+import type { MarketSummary } from '@/lib/polymarket/types';
+
+type MarketForCard = Omit<MarketSummary, 'endDate' | 'closedTime'> & {
+  endDate: string | Date;
+  closedTime?: string | Date | null;
+};
+
+type Props = {
+  market: MarketForCard;
+  isDark: boolean;
+};
+
+export function MarketCard({ market, isDark }: Props) {
+  const [remaining, setRemaining] = useState(() =>
+    differenceInMilliseconds(new Date(market.endDate), Date.now()),
+  );
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setRemaining(differenceInMilliseconds(new Date(market.endDate), Date.now()));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [market.endDate]);
+
+  const countdownLabel = useMemo(() => {
+    if (remaining <= 0) return 'Closed';
+    const totalSeconds = Math.floor(remaining / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+      return `${hours}h ${minutes.toString().padStart(2, '0')}m`;
+    }
+
+    return `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
+  }, [remaining]);
+
+  return (
+    <div
+      className={`rounded-2xl border shadow-md transition hover:-translate-y-0.5 hover:shadow-lg ${
+        isDark
+          ? 'border-slate-800 bg-[#0f182c] shadow-slate-900/60 hover:shadow-slate-900/70'
+          : 'border-slate-200 bg-white shadow-slate-200 hover:shadow-slate-300'
+      }`}
+    >
+      <div className="flex flex-col gap-3 p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p
+              className={`text-xs uppercase tracking-wide ${
+                isDark ? 'text-slate-400' : 'text-slate-500'
+              }`}
+            >
+              {market.category}
+            </p>
+            <h3 className={`text-lg font-semibold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
+              {market.title}
+            </h3>
+          </div>
+          <span
+            className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+              isDark
+                ? 'border-blue-800 bg-blue-900/40 text-blue-100'
+                : 'border-blue-200 bg-blue-50 text-[#002cff]'
+            }`}
+          >
+            Live
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-4 text-sm">
+          <div>
+            <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>Leading side</p>
+            <p className={`text-lg font-semibold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
+              {(market.price.price * 100).toFixed(1)}c ({market.price.leadingOutcome})
+            </p>
+          </div>
+          <div>
+            <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>Volume</p>
+            <p className={`text-lg font-semibold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
+              ${Intl.NumberFormat().format(market.volume)}
+            </p>
+          </div>
+          <div>
+            <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>Closes</p>
+            <p className={`text-sm font-semibold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
+              {formatDistanceToNow(new Date(market.endDate), { addSuffix: true })}
+            </p>
+          </div>
+          <div className="ml-auto">
+            <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>Time left</p>
+            <p className={`text-lg font-semibold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
+              {countdownLabel}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center justify-between">
+          <a
+            href={market.url}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-full bg-[#002cff] px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+          >
+            Trade on Polymarket
+          </a>
+          <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+            ID:{' '}
+            <span className={`font-mono ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+              {market.id}
+            </span>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}

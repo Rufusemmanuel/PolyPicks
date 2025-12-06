@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+.env
+.env.local
+.prisma
+coverage
+data/polybet.db
+data/polybet.db-journal
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
