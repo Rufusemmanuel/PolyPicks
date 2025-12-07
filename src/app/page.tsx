@@ -6,9 +6,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { Footer } from '@/components/Footer';
 import { Providers } from '@/components/providers';
-import { useMarkets, useHistory } from '@/lib/useMarkets';
+import { useMarkets } from '@/lib/useMarkets';
 import { MarketCard } from '@/components/MarketCard';
-import { HistoryTable } from '@/components/HistoryTable';
 import { Skeleton } from '@/components/Skeleton';
 import type { MarketSummary } from '@/lib/polymarket/types';
 
@@ -437,41 +436,8 @@ function MarketsSection({
   );
 }
 
-function HistorySection({ isDark }: { isDark: boolean }) {
-  const { data, isLoading, isError } = useHistory();
-
-  return (
-    <section id="history" className={isDark ? 'bg-[#0b1224]' : 'bg-white'}>
-      <div className="mx-auto max-w-6xl px-4 py-12 space-y-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className={`text-2xl font-bold ${isDark ? 'text-slate-50' : 'text-slate-900'}`}>
-              History
-            </h2>
-            <p className={isDark ? 'text-slate-300' : 'text-slate-600'}>
-              Markets that hit the Polybet filter and resolved with the tracked outcome.
-            </p>
-          </div>
-          <span
-            className={`rounded-full border px-3 py-1 text-sm font-semibold ${
-              isDark
-                ? 'border-blue-800 bg-blue-900/40 text-blue-100'
-                : 'border-blue-200 bg-blue-50 text-[#002cff]'
-            }`}
-          >
-            Total successful signals: {data?.total ?? 0}
-          </span>
-        </div>
-        {isLoading && <Skeleton className="h-32" />}
-        {isError && (
-          <p className={`text-sm ${isDark ? 'text-red-300' : 'text-red-600'}`}>
-            Unable to load history. Please refresh or try again later.
-          </p>
-        )}
-        {data && <HistoryTable entries={data.history} isDark={isDark} />}
-      </div>
-    </section>
-  );
+function HistorySection(_: { isDark: boolean }) {
+  return null;
 }
 
 function AboutSection({ isDark }: { isDark: boolean }) {
