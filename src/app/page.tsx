@@ -482,12 +482,11 @@ function AboutSection({ isDark }: { isDark: boolean }) {
           About Polybet
         </h2>
         <p className={isDark ? 'text-slate-300' : 'text-slate-600'}>
-          Polybet is a read-only dashboard that highlights high-probability Polymarket contracts nearing resolution. It
-          does not place trades. Prices and metadata come directly from the official Polymarket Gamma/Data API, and we
-          attempt RTDS WebSocket streaming when available, falling back to 10s polling. History is persisted locally
-          (SQLite via Prisma) so you can audit past signals even after restarts.
+          Polybet is a powerful tool designed to help individuals and traders secure the best live bets. we refine and narrow down the odds to deliver top-tier selections.
         </p>
       </div>
     </section>
   );
 }
+
+
