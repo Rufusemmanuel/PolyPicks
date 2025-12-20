@@ -1,4 +1,4 @@
-# Polybet
+# PolyPicks
 
 Next.js 14 + Prisma + SQLite dashboard for Polymarket markets.
 
