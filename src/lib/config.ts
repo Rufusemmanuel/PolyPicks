@@ -11,7 +11,7 @@ export const POLYMARKET_CONFIG = {
 
   // Frontend URLs
   marketPageBase: process.env.POLYMARKET_MARKET_BASE ?? 'https://polymarket.com/event/',
-  twitterUrl: process.env.NEXT_PUBLIC_TWITTER_URL ?? 'https://x.com/Poly_Bets',
+  twitterUrl: process.env.NEXT_PUBLIC_TWITTER_URL ?? 'https://x.com/PolyPicks_',
 
   // PolyPicks odds & time config
   priceFloor: MIN_ODDS,
