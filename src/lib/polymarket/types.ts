@@ -129,7 +129,13 @@ export type MarketDetailsResponse = {
   sports?: SportsEnrichment;
   sportsMeta?: {
     enabled: boolean;
-    reason?: 'missing_api_key' | 'fixture_not_found' | 'not_soccer';
+    reason?:
+      | 'missing_api_key'
+      | 'fixture_not_found'
+      | 'not_soccer'
+      | 'matchup_parse_failed'
+      | 'rate_limited'
+      | 'upstream_error';
   };
 };
 

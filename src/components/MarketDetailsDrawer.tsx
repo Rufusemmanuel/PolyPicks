@@ -235,7 +235,13 @@ export function MarketDetailsDrawer({ marketId, isOpen, isDark, onClose }: Props
                     {details.sportsMeta?.reason === 'missing_api_key'
                       ? 'Set FOOTBALL_DATA_API_KEY in .env.local / Vercel env vars to enable soccer stats.'
                       : details.sportsMeta?.reason === 'fixture_not_found'
-                        ? 'No fixture found for this matchup/date (league coverage may be limited).'
+                        ? "Couldn't find the scheduled fixture for this team on that date."
+                        : details.sportsMeta?.reason === 'matchup_parse_failed'
+                          ? 'Could not parse team name(s) from this market title.'
+                          : details.sportsMeta?.reason === 'rate_limited'
+                            ? 'Soccer stats are temporarily rate limited. Please try again shortly.'
+                            : details.sportsMeta?.reason === 'upstream_error'
+                              ? 'Soccer stats are unavailable due to an upstream error. Please try again.'
                         : 'Stats currently supported for soccer markets only.'}
                   </p>
                 )}

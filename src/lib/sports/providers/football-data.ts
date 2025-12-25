@@ -22,10 +22,10 @@ type MatchResponse = {
   matches: {
     id: number;
     utcDate: string;
-    competition?: { name?: string };
+    competition?: { id?: number; name?: string; code?: string };
     score?: { fullTime?: { home?: number | null; away?: number | null } };
-    homeTeam: { id: number; name: string };
-    awayTeam: { id: number; name: string };
+    homeTeam: { id: number; name: string; shortName?: string };
+    awayTeam: { id: number; name: string; shortName?: string };
   }[];
 };
 
@@ -77,6 +77,7 @@ export type FootballStandings = {
 const FOOTBALL_DATA_BASE = 'https://api.football-data.org/v4';
 const API_KEY = process.env.FOOTBALL_DATA_API_KEY;
 const CACHE_REVALIDATE_SECONDS = 6 * 60 * 60;
+let rateLimitHit = false;
 
 type QueryParams = Record<string, string | number | undefined>;
 
@@ -103,7 +104,10 @@ const fetchFootballData = async <T>(
       },
       next: { revalidate: CACHE_REVALIDATE_SECONDS },
     });
-    if (res.status === 429) return null;
+    if (res.status === 429) {
+      rateLimitHit = true;
+      return null;
+    }
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
@@ -122,13 +126,30 @@ const hasSlugToken = (slug: string, token: string) =>
   new RegExp(`(^|-)${token}(-|$)`, 'i').test(slug);
 
 export const normalizeTeamName = (name: string) => {
+  const abbreviations: Record<string, string> = {
+    utd: 'united',
+    nottm: 'nottingham',
+    bor: 'borussia',
+    dep: 'deportivo',
+    ath: 'athletic',
+  };
   const tokens = normalizeName(name)
     .split(' ')
-    .filter((token) => token && !['fc', 'sc', 'cf', 'afc', 'the', 'club'].includes(token));
+    .map((token) => abbreviations[token] ?? token)
+    .filter(
+      (token) =>
+        token && !['fc', 'sc', 'cf', 'afc', 'the', 'club', 'ud', 'cd', 'cf'].includes(token),
+    );
   return tokens.join(' ').trim();
 };
 
 export const isFootballDataConfigured = () => Boolean(API_KEY);
+
+export const consumeRateLimitSignal = () => {
+  const hit = rateLimitHit;
+  rateLimitHit = false;
+  return hit;
+};
 
 const scoreTeamMatch = (team: TeamSearchResponse['teams'][number], query: string): number => {
   const normalizedQuery = normalizeTeamName(query);
@@ -187,6 +208,42 @@ export const parseMatchupFromTitle = (
   if (!teamA || !teamB) return null;
   if (teamA.length < 2 || teamB.length < 2) return null;
   return { teamA, teamB };
+};
+
+export const parseSingleTeamFromTitle = (
+  title: string,
+): { team: string; date?: string | null } | null => {
+  if (!title || !/^will\s/i.test(title)) return null;
+  const match = title.match(
+    /^Will\s+(.+?)\s+win(?:\s+on\s+(\d{4}-\d{2}-\d{2}))?/i,
+  );
+  if (!match) return null;
+  const team = match[1]
+    ?.trim()
+    .replace(/[?)]$/, '')
+    .replace(/\s+\b(?:total|spread|over\/under|o\/u)\b.*$/i, '')
+    .trim();
+  const date = match[2]?.trim();
+  if (!team || team.length < 2) return null;
+  return { team, date: date || null };
+};
+
+export const parseSingleTeamWinFromTitle = (
+  title: string,
+): { team: string; date?: string | null } | null => {
+  if (!title || !/^will\s/i.test(title)) return null;
+  const withDate = title.match(
+    /^Will\s+(.+?)\s+win\s+on\s+(\d{4}-\d{2}-\d{2})\??/i,
+  );
+  const withoutDate = title.match(/^Will\s+(.+?)\s+win\??/i);
+  const teamRaw = (withDate?.[1] ?? withoutDate?.[1])?.trim();
+  if (!teamRaw || teamRaw.length < 2) return null;
+  const team = teamRaw
+    .replace(/[?)]$/, '')
+    .replace(/\s+\b(?:total|spread|over\/under|o\/u)\b.*$/i, '')
+    .trim();
+  const date = withDate?.[2]?.trim() ?? null;
+  return { team, date };
 };
 
 const pickBestTeam = (teams: TeamSearchResponse['teams'], query: string) =>
@@ -314,33 +371,64 @@ export type FixtureMatch = {
   matchId: number;
   utcDate: string;
   competition?: string | null;
+  competitionCode?: string | null;
   homeTeamId: number;
   awayTeamId: number;
   homeTeamName: string;
   awayTeamName: string;
 };
 
+const fetchMatchesByDate = async (
+  matchDate: string,
+  competitionCode?: string | null,
+): Promise<CompetitionMatchesResponse | null> => {
+  const base = new Date(`${matchDate}T00:00:00Z`);
+  if (Number.isNaN(base.getTime())) return null;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const dateFrom = new Date(base.getTime() - dayMs).toISOString().slice(0, 10);
+  const dateTo = new Date(base.getTime() + dayMs).toISOString().slice(0, 10);
+  if (competitionCode) {
+    return fetchFootballData<CompetitionMatchesResponse>(
+      `/competitions/${competitionCode}/matches`,
+      { dateFrom, dateTo },
+    );
+  }
+  return fetchFootballData<CompetitionMatchesResponse>(`/matches`, {
+    dateFrom,
+    dateTo,
+  });
+};
+
 export const findFixtureMatch = async (
-  competitionCode: string,
   matchDate: string,
   teamA: string,
   teamB: string,
+  competitionCode?: string | null,
 ): Promise<FixtureMatch | null> => {
-  const response = await fetchFootballData<CompetitionMatchesResponse>(
-    `/competitions/${competitionCode}/matches`,
-    { dateFrom: matchDate, dateTo: matchDate },
-  );
+  const response = await fetchMatchesByDate(matchDate, competitionCode);
   if (!response?.matches?.length) return null;
 
   let best: MatchResponse['matches'][number] | null = null;
   let bestScore = 0;
 
   for (const match of response.matches) {
-    const homeScore = scoreNameMatch(teamA, match.homeTeam.name);
-    const awayScore = scoreNameMatch(teamB, match.awayTeam.name);
+    const homeScore = Math.max(
+      scoreNameMatch(teamA, match.homeTeam.name),
+      scoreNameMatch(teamA, match.homeTeam.shortName ?? ''),
+    );
+    const awayScore = Math.max(
+      scoreNameMatch(teamB, match.awayTeam.name),
+      scoreNameMatch(teamB, match.awayTeam.shortName ?? ''),
+    );
     const swapScore =
-      scoreNameMatch(teamA, match.awayTeam.name) +
-      scoreNameMatch(teamB, match.homeTeam.name);
+      Math.max(
+        scoreNameMatch(teamA, match.awayTeam.name),
+        scoreNameMatch(teamA, match.awayTeam.shortName ?? ''),
+      ) +
+      Math.max(
+        scoreNameMatch(teamB, match.homeTeam.name),
+        scoreNameMatch(teamB, match.homeTeam.shortName ?? ''),
+      );
     const score = Math.max(homeScore + awayScore, swapScore);
     if (score > bestScore) {
       bestScore = score;
@@ -354,6 +442,7 @@ export const findFixtureMatch = async (
     matchId: best.id,
     utcDate: best.utcDate,
     competition: best.competition?.name ?? null,
+    competitionCode: best.competition?.code ?? competitionCode ?? null,
     homeTeamId: best.homeTeam.id,
     awayTeamId: best.awayTeam.id,
     homeTeamName: best.homeTeam.name,
@@ -361,42 +450,131 @@ export const findFixtureMatch = async (
   };
 };
 
-export const resolveCompetitionCode = (slug: string) => {
-  const lowerSlug = slug.toLowerCase();
-  const mapping: Record<string, string> = {
-    epl: 'PL',
-    'premier-league': 'PL',
-    ucl: 'CL',
-    'champions-league': 'CL',
-    bundesliga: 'BL1',
-    'la-liga': 'PD',
-    'serie-a': 'SA',
-    'ligue-1': 'FL1',
-    eredivisie: 'DED',
-    'primeira-liga': 'PPL',
-  };
+export const findFixtureForSingleTeam = async (
+  matchDate: string,
+  teamName: string,
+  competitionCode?: string | null,
+): Promise<FixtureMatch | null> => {
+  const response = await fetchMatchesByDate(matchDate, competitionCode);
+  if (!response?.matches?.length) return null;
 
-  for (const token of Object.keys(mapping)) {
-    if (hasSlugToken(lowerSlug, token)) return mapping[token];
+  let best: MatchResponse['matches'][number] | null = null;
+  let bestScore = 0;
+
+  for (const match of response.matches) {
+    const homeScore = Math.max(
+      scoreNameMatch(teamName, match.homeTeam.name),
+      scoreNameMatch(teamName, match.homeTeam.shortName ?? ''),
+    );
+    const awayScore = Math.max(
+      scoreNameMatch(teamName, match.awayTeam.name),
+      scoreNameMatch(teamName, match.awayTeam.shortName ?? ''),
+    );
+    const score = Math.max(homeScore, awayScore);
+    if (score > bestScore) {
+      bestScore = score;
+      best = match;
+    }
+  }
+
+  if (!best || bestScore < 60) return null;
+
+  return {
+    matchId: best.id,
+    utcDate: best.utcDate,
+    competition: best.competition?.name ?? null,
+    competitionCode: best.competition?.code ?? competitionCode ?? null,
+    homeTeamId: best.homeTeam.id,
+    awayTeamId: best.awayTeam.id,
+    homeTeamName: best.homeTeam.name,
+    awayTeamName: best.awayTeam.name,
+  };
+};
+
+export const resolveOpponentFromFixtures = async (
+  teamName: string,
+  matchDate: string,
+  competitionCodes: string[],
+): Promise<FixtureMatch | null> => {
+  for (const code of competitionCodes) {
+    const fixture = await findFixtureForSingleTeam(matchDate, teamName, code);
+    if (!fixture) continue;
+    return fixture;
   }
   return null;
 };
 
+const competitionTokenMap: Record<string, string> = {
+  epl: 'PL',
+  'premier-league': 'PL',
+  ucl: 'CL',
+  'champions-league': 'CL',
+  'europa-league': 'EL',
+  'conference-league': 'ECL',
+  'la-liga': 'PD',
+  'serie-a': 'SA',
+  bundesliga: 'BL1',
+  'ligue-1': 'FL1',
+  eredivisie: 'DED',
+  'primeira-liga': 'PPL',
+  'liga-nos': 'PPL',
+  championship: 'ELC',
+  'fa-cup': 'FAC',
+  'efl-cup': 'EFL',
+  carabao: 'EFL',
+  'copa-del-rey': 'CDR',
+  'coppa-italia': 'CIT',
+  'world-cup': 'WC',
+};
+
+const hasTitleToken = (title: string, token: string) => {
+  const normalized = title.toLowerCase();
+  const regex = new RegExp(`\\b${token.replace(/-/g, '\\\\s+')}\\b`, 'i');
+  return regex.test(normalized);
+};
+
+export const resolveCompetitionCandidates = (slug: string, title: string): string[] => {
+  const lowerSlug = slug.toLowerCase();
+  const candidates: string[] = [];
+  for (const [token, code] of Object.entries(competitionTokenMap)) {
+    if (hasSlugToken(lowerSlug, token)) candidates.push(code);
+  }
+  for (const [token, code] of Object.entries(competitionTokenMap)) {
+    if (hasTitleToken(title, token)) candidates.push(code);
+  }
+  return Array.from(new Set(candidates));
+};
+
+export const resolveCompetitionCode = (slug: string) =>
+  resolveCompetitionCandidates(slug, '')[0] ?? null;
+
+export const TOP_COMPETITION_CODES = [
+  'PL',
+  'PD',
+  'SA',
+  'BL1',
+  'FL1',
+  'DED',
+  'PPL',
+  'CL',
+  'EL',
+  'WC',
+  'ELC',
+];
+
 export const isSoccerMarket = (title: string, slug: string, tags?: string[]) => {
   const lowerSlug = slug.toLowerCase();
   const slugTokens = [
-    'epl',
-    'premier-league',
-    'ucl',
-    'champions-league',
-    'bundesliga',
-    'la-liga',
-    'serie-a',
-    'ligue-1',
-    'eredivisie',
-    'primeira-liga',
+    'soccer',
+    'football',
+    'world-cup',
+    'uefa',
+    'fifa',
+    'afcon',
   ];
-  return slugTokens.some((token) => hasSlugToken(lowerSlug, token));
+  const slugHit = slugTokens.some((token) => hasSlugToken(lowerSlug, token));
+  const candidates = resolveCompetitionCandidates(slug, title);
+  return slugHit || candidates.length > 0;
 };
 
 export const isAmericanLeagueMarket = (title: string, slug: string) => {
