@@ -221,6 +221,18 @@ export function MarketDetailsDrawer({ marketId, isOpen, isDark, onClose }: Props
                         'No additional resolution details provided by Polymarket for this market.'}
                     </p>
                   </div>
+                  {details.about.sourceUrl && (
+                    <a
+                      href={details.about.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={`text-sm underline underline-offset-4 ${
+                        isDark ? 'text-slate-300 hover:text-slate-100' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      View on Polymarket
+                    </a>
+                  )}
                 </div>
               </section>
             )}
@@ -320,19 +332,6 @@ export function MarketDetailsDrawer({ marketId, isOpen, isDark, onClose }: Props
               </section>
             )}
 
-            <div className="flex items-center justify-between">
-              <a
-                href={details.about.sourceUrl ?? '#'}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-full bg-[#002cff] px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-              >
-                Trade on Polymarket
-              </a>
-              <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {details.slug}
-              </span>
-            </div>
           </div>
         )}
       </div>
