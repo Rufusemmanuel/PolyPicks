@@ -58,6 +58,15 @@ export function MarketDetailsDrawer({ marketId, isOpen, isDark, onClose }: Props
     details.highConfidence.currentProb >= details.highConfidence.min &&
     details.highConfidence.currentProb <= details.highConfidence.max;
   type MatchItem = NonNullable<MarketDetailsResponse['sports']>['recentA'][number];
+  const sectionTitleClassName = `text-sm sm:text-base font-semibold tracking-wide ${
+    isDark ? 'text-slate-200' : 'text-slate-800'
+  }`;
+  const SectionTitle = ({ children }: { children: React.ReactNode }) => (
+    <p className={sectionTitleClassName}>{children}</p>
+  );
+  const blockTitleClassName = `text-xs sm:text-sm font-semibold uppercase tracking-wide ${
+    isDark ? 'text-slate-300' : 'text-slate-700'
+  }`;
 
   const formatMatchMeta = (match: MatchItem) => {
     const date = match.utcDate ? new Date(match.utcDate) : null;
@@ -88,7 +97,7 @@ export function MarketDetailsDrawer({ marketId, isOpen, isDark, onClose }: Props
     teamName?: string;
   }) => (
     <div className="space-y-2">
-      <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>{title}</p>
+      <p className={blockTitleClassName}>{title}</p>
       <ul className="space-y-2 text-sm">
         {matches.map((match) => {
           const meta = formatMatchMeta(match);
@@ -193,44 +202,40 @@ export function MarketDetailsDrawer({ marketId, isOpen, isDark, onClose }: Props
             {activeTab === 'overview' && (
               <>
                 <section className="space-y-2">
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-400">
-                    Key stats
-                  </h3>
+                  <SectionTitle>Key stats</SectionTitle>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>Leading side</p>
+                      <p className={blockTitleClassName}>Leading side</p>
                       <p className="text-lg font-semibold">
                         {currentProbPct}% ({details.leading.outcome},{' '}
                         {details.leading.price.toFixed(3)})
                       </p>
                     </div>
                     <div>
-                      <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>Volume</p>
+                      <p className={blockTitleClassName}>Volume</p>
                       <p className="text-lg font-semibold">
                         ${Intl.NumberFormat().format(details.volume)}
                       </p>
                     </div>
                     <div>
-                      <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>Closes</p>
+                      <p className={blockTitleClassName}>Closes</p>
                       <p className="text-sm font-semibold">
                         {new Date(details.closesAt).toLocaleString()}
                       </p>
                     </div>
                     <div>
-                      <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>Time left</p>
+                      <p className={blockTitleClassName}>Time left</p>
                       <p className="text-sm font-semibold">{timeLeft}</p>
                     </div>
                     <div>
-                      <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>Market ID</p>
+                      <p className={blockTitleClassName}>Market ID</p>
                       <p className="text-sm font-mono">{details.id}</p>
                     </div>
                   </div>
                 </section>
 
                 <section className="space-y-2">
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-400">
-                    High confidence
-                  </h3>
+                  <SectionTitle>High confidence</SectionTitle>
                   <p className={isDark ? 'text-slate-300' : 'text-slate-600'}>
                     {details.highConfidence.whyText}
                   </p>
@@ -252,47 +257,31 @@ export function MarketDetailsDrawer({ marketId, isOpen, isDark, onClose }: Props
 
             {activeTab === 'about' && (
               <section className="space-y-2">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-400">
-                  About and rules
-                </h3>
-                <div className="space-y-3">
+                <SectionTitle>About and rules</SectionTitle>
+                <div className="space-y-4">
                   <div>
-                    <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>Description</p>
+                    <p className={blockTitleClassName}>Description</p>
                     <p className={isDark ? 'text-slate-300' : 'text-slate-600'}>
                       {details.about.description ??
                         'No additional resolution details provided by Polymarket for this market.'}
                     </p>
                   </div>
-                  <div>
-                    <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>Resolution rules</p>
+                  <div
+                    className={`border-t pt-4 ${isDark ? 'border-white/10' : 'border-slate-200'}`}
+                  >
+                    <p className={blockTitleClassName}>Resolution rules</p>
                     <p className={isDark ? 'text-slate-300' : 'text-slate-600'}>
                       {details.about.resolution ??
                         'No additional resolution details provided by Polymarket for this market.'}
                     </p>
                   </div>
-                  {details.url && (
-                    <a
-                      href={details.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={`text-sm underline underline-offset-4 ${
-                        isDark
-                          ? 'text-slate-300 hover:text-slate-100'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      View on Polymarket
-                    </a>
-                  )}
                 </div>
               </section>
             )}
 
             {activeTab === 'stats' && (
               <section className="space-y-3">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-400">
-                  Team stats
-                </h3>
+                <SectionTitle>Team stats</SectionTitle>
                 {!details.sports && (
                   <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>
                     {details.sportsMeta?.reason === 'missing_api_key'
@@ -350,7 +339,11 @@ export function MarketDetailsDrawer({ marketId, isOpen, isDark, onClose }: Props
                       />
                     </div>
                     {details.sports.headToHead.length > 0 && (
-                      <MatchList title="Head to head" matches={details.sports.headToHead} />
+                      <div
+                        className={`border-t pt-4 ${isDark ? 'border-white/10' : 'border-slate-200'}`}
+                      >
+                        <MatchList title="Head to head" matches={details.sports.headToHead} />
+                      </div>
                     )}
                   </div>
                 )}
