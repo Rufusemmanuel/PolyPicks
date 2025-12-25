@@ -78,6 +78,23 @@ const cases = [
     }),
     expected: 'Politics',
   },
+  {
+    name: 'Serie A spread market is sports',
+    market: makeMarket({
+      question: 'Spread: SS Lazio (-1.5)',
+      slug: 'sea-udi-laz-2025-12-27-spread-away-1pt5',
+      category: 'World',
+    }),
+    expected: 'Sports',
+  },
+  {
+    name: 'Serie A spread market without category is sports',
+    market: makeMarket({
+      question: 'Spread: ACF Fiorentina (-1.5)',
+      slug: 'sea-par-fio-2025-12-27-spread-away-1pt5',
+    }),
+    expected: 'Sports',
+  },
 ];
 
 for (const testCase of cases) {

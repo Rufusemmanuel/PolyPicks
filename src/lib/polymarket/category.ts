@@ -16,6 +16,24 @@ const TECH_KEYWORDS = [
   'tesla',
 ] as const;
 const UP_OR_DOWN_REGEX = /up\s*or\s*down/i;
+const SPREAD_CUE = /^(spread|handicap)\s*:/i;
+const SPORTS_SLUG_TOKENS = [
+  'nfl',
+  'nba',
+  'mlb',
+  'nhl',
+  'epl',
+  'premier-league',
+  'ucl',
+  'champions-league',
+  'fifa',
+  'uefa',
+  'afcon',
+  'world-cup',
+  'f1',
+  'soccer',
+  'sea',
+] as const;
 const hasWholeWordToken = (text: string, token: string): boolean => {
   const safeToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`\\b${safeToken}\\b`, 'i').test(text);
@@ -92,6 +110,7 @@ const hasSportsSignal = (market: RawMarket): boolean => {
   const tagLabels = collectTagLabels(market);
 
   if (tagLabels.some((label) => label.toLowerCase().includes('sports'))) return true;
+  if (SPREAD_CUE.test(title) && hasAnySlugToken(slug, [...SPORTS_SLUG_TOKENS])) return true;
 
   const lowerCategory = category.toLowerCase();
   const matchCue =
@@ -122,27 +141,10 @@ const hasSportsSignal = (market: RawMarket): boolean => {
   );
   if (startsWithTeamWin && matchCue && !politicsCue) return true;
 
-  const sportsSlugTokens = [
-    'nfl',
-    'nba',
-    'mlb',
-    'nhl',
-    'epl',
-    'premier-league',
-    'ucl',
-    'champions-league',
-    'fifa',
-    'uefa',
-    'afcon',
-    'world-cup',
-    'f1',
-    'soccer',
-  ];
-
   const titleLeagueTokens = ['nfl', 'nba', 'mlb', 'nhl'];
   const hasTitleLeagueToken = titleLeagueTokens.some((token) => hasWholeWordToken(title, token));
 
-  return hasAnySlugToken(slug, sportsSlugTokens) || (matchCue && hasTitleLeagueToken);
+  return hasAnySlugToken(slug, [...SPORTS_SLUG_TOKENS]) || (matchCue && hasTitleLeagueToken);
 };
 
 const hasPoliticsSignal = (market: RawMarket): boolean => {
@@ -205,20 +207,7 @@ const inferCategoryFromSlug = (slug?: string): string | undefined => {
   }
   if (
     hasAnySlugToken(s, [
-      'nfl',
-      'nba',
-      'mlb',
-      'nhl',
-      'epl',
-      'premier-league',
-      'ucl',
-      'champions-league',
-      'fifa',
-      'uefa',
-      'afcon',
-      'world-cup',
-      'f1',
-      'soccer',
+      ...SPORTS_SLUG_TOKENS,
     ])
   ) {
     return 'Sports';
