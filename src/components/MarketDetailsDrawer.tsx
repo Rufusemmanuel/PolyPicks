@@ -232,7 +232,7 @@ export function MarketDetailsDrawer({ marketId, isOpen, isDark, onClose }: Props
                 </h3>
                 {!details.sports && (
                   <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-                    Team stats unavailable for this market yet.
+                    Stats currently supported for soccer markets only.
                   </p>
                 )}
                 {details.sports && (

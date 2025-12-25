@@ -7,8 +7,16 @@ const cases = [
     expected: { teamA: 'Cowboys', teamB: 'Commanders' },
   },
   {
+    title: 'Manchester United FC vs. Newcastle United FC: O/U 1.5',
+    expected: { teamA: 'Manchester United FC', teamB: 'Newcastle United FC' },
+  },
+  {
     title: 'Will Al Hazem SC win on 2025-12-25?',
     expected: null,
+  },
+  {
+    title: 'Team A vs. Team B (International Friendly)',
+    expected: { teamA: 'Team A', teamB: 'Team B' },
   },
 ];
 

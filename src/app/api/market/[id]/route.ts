@@ -5,6 +5,8 @@ import {
   getRecentMatches,
   getStandings,
   getTeamDetails,
+  isAmericanLeagueMarket,
+  isSoccerMarket,
   parseMatchupFromTitle,
   searchTeamByName,
 } from '@/lib/sports/providers/football-data';
@@ -20,7 +22,11 @@ export async function GET(_: Request, { params }: Params) {
     }
 
     let sports: SportsEnrichment | undefined;
-    if (market.categoryResolved === 'Sports') {
+    if (
+      market.categoryResolved === 'Sports' &&
+      isSoccerMarket(market.title, market.slug, market.tags) &&
+      !isAmericanLeagueMarket(market.title, market.slug)
+    ) {
       const matchup = parseMatchupFromTitle(market.title);
       if (matchup) {
         try {

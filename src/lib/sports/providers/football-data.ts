@@ -112,11 +112,64 @@ const normalizeName = (name: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+export const normalizeTeamName = (name: string) => {
+  const tokens = normalizeName(name)
+    .split(' ')
+    .filter((token) => token && !['fc', 'sc', 'cf', 'afc', 'the', 'club'].includes(token));
+  return tokens.join(' ').trim();
+};
+
+const scoreTeamMatch = (team: TeamSearchResponse['teams'][number], query: string): number => {
+  const normalizedQuery = normalizeTeamName(query);
+  const normalizedName = normalizeTeamName(team.name);
+  if (normalizedName === normalizedQuery) return 100;
+  if (team.shortName && normalizeTeamName(team.shortName) === normalizedQuery) return 95;
+  if (team.tla && team.tla.toLowerCase() === normalizedQuery.replace(/ /g, '')) return 90;
+
+  const queryTokens = new Set(normalizedQuery.split(' ').filter(Boolean));
+  const nameTokens = new Set(normalizedName.split(' ').filter(Boolean));
+  if (!queryTokens.size || !nameTokens.size) return 0;
+  let overlap = 0;
+  for (const token of queryTokens) {
+    if (nameTokens.has(token)) overlap += 1;
+  }
+  return Math.round((overlap / Math.max(queryTokens.size, nameTokens.size)) * 60);
+};
+
+const bestTeamMatch = (
+  teams: TeamSearchResponse['teams'],
+  query: string,
+  threshold = 60,
+) => {
+  let best: TeamSearchResponse['teams'][number] | null = null;
+  let bestScore = 0;
+  for (const team of teams) {
+    const score = scoreTeamMatch(team, query);
+    if (score > bestScore) {
+      best = team;
+      bestScore = score;
+    }
+  }
+  if (!best || bestScore < threshold) return null;
+  return best;
+};
+
 export const parseMatchupFromTitle = (
   title: string,
 ): { teamA: string; teamB: string } | null => {
   if (!title || /^will\s/i.test(title)) return null;
-  const match = title.match(/(.+?)\s+(?:vs\.?|v|@)\s+(.+)/i);
+  const cleaned = title
+    .split(':')[0]
+    ?.split(' - ')[0]
+    ?.split('(')[0]
+    ?.replace(/\bO\/U\b.*$/i, '')
+    ?.replace(/\bOver\/Under\b.*$/i, '')
+    ?.replace(/\bTotals?\b.*$/i, '')
+    ?.replace(/\bSpread\b.*$/i, '')
+    ?.trim();
+  if (!cleaned) return null;
+
+  const match = cleaned.match(/(.+?)\s+(?:vs\.?|v|@)\s+(.+)/i);
   if (!match) return null;
   const teamA = match[1]?.trim().replace(/[?)]$/, '');
   const teamB = match[2]?.trim().replace(/[?)]$/, '');
@@ -125,15 +178,12 @@ export const parseMatchupFromTitle = (
   return { teamA, teamB };
 };
 
-const pickBestTeam = (teams: TeamSearchResponse['teams'], query: string) => {
-  if (!teams.length) return null;
-  const normalizedQuery = normalizeName(query);
-  const exact = teams.find((team) => normalizeName(team.name) === normalizedQuery);
-  if (exact) return exact;
-  const contains = teams.find((team) => normalizeName(team.name).includes(normalizedQuery));
-  if (contains) return contains;
-  return teams[0];
-};
+const pickBestTeam = (teams: TeamSearchResponse['teams'], query: string) =>
+  bestTeamMatch(teams, query);
+
+export const resolveTeamIdFromSearch = async (
+  name: string,
+): Promise<FootballTeam | null> => searchTeamByName(name);
 
 export const searchTeamByName = async (name: string): Promise<FootballTeam | null> => {
   const response = await fetchFootballData<TeamSearchResponse>('/teams', { name });
@@ -219,4 +269,43 @@ export const getStandings = async (
       points: row.points ?? 0,
     })),
   };
+};
+
+export const isSoccerMarket = (title: string, slug: string, tags?: string[]) => {
+  const lowerSlug = slug.toLowerCase();
+  const lowerTitle = title.toLowerCase();
+  const lowerTags = (tags ?? []).map((tag) => tag.toLowerCase());
+  const slugHit = [
+    'epl',
+    'premier-league',
+    'ucl',
+    'champions-league',
+    'bundesliga',
+    'la-liga',
+    'serie-a',
+    'ligue-1',
+    'soccer',
+    'football',
+  ].some((token) => lowerSlug.includes(token));
+  const tagHit = lowerTags.some((tag) => tag.includes('soccer') || tag.includes('football'));
+  return slugHit || tagHit || lowerTitle.includes('football') || lowerTitle.includes('soccer');
+};
+
+export const isAmericanLeagueMarket = (title: string, slug: string) => {
+  const lowerSlug = slug.toLowerCase();
+  const lowerTitle = title.toLowerCase();
+  if (
+    lowerSlug.startsWith('nfl-') ||
+    lowerSlug.startsWith('nba-') ||
+    lowerSlug.startsWith('mlb-') ||
+    lowerSlug.startsWith('nhl-')
+  ) {
+    return true;
+  }
+  return (
+    /\bnfl\b/i.test(lowerTitle) ||
+    /\bnba\b/i.test(lowerTitle) ||
+    /\bmlb\b/i.test(lowerTitle) ||
+    /\bnhl\b/i.test(lowerTitle)
+  );
 };
