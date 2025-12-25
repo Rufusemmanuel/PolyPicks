@@ -238,6 +238,10 @@ export function MarketDetailsDrawer({ marketId, isOpen, isDark, onClose }: Props
                         ? 'Could not parse team name(s) from this market title.'
                       : details.sportsMeta?.reason === 'fixture_not_found'
                         ? "Couldn't find the scheduled fixture for this team on that date."
+                        : details.sportsMeta?.reason === 'team_not_found'
+                          ? "Couldn't match this team to a supported fixture."
+                        : details.sportsMeta?.reason === 'unsupported_competition'
+                          ? "Soccer stats aren't available for this league/competition yet."
                         : details.sportsMeta?.reason === 'rate_limited'
                           ? 'Soccer stats are temporarily rate limited. Please try again shortly.'
                           : details.sportsMeta?.reason === 'upstream_error'

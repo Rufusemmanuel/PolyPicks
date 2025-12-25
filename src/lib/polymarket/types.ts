@@ -134,6 +134,8 @@ export type MarketDetailsResponse = {
       | 'fixture_not_found'
       | 'not_soccer'
       | 'matchup_parse_failed'
+      | 'unsupported_competition'
+      | 'team_not_found'
       | 'rate_limited'
       | 'upstream_error';
   };

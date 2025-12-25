@@ -26,6 +26,8 @@ const SPORTS_SLUG_TOKENS = [
   'premier-league',
   'ucl',
   'champions-league',
+  'serie-a',
+  'sa',
   'fifa',
   'uefa',
   'afcon',
@@ -33,6 +35,9 @@ const SPORTS_SLUG_TOKENS = [
   'f1',
   'soccer',
   'sea',
+  'elc',
+  'efl',
+  'championship',
 ] as const;
 const hasWholeWordToken = (text: string, token: string): boolean => {
   const safeToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -111,6 +116,10 @@ const hasSportsSignal = (market: RawMarket): boolean => {
 
   if (tagLabels.some((label) => label.toLowerCase().includes('sports'))) return true;
   if (SPREAD_CUE.test(title) && hasAnySlugToken(slug, [...SPORTS_SLUG_TOKENS])) return true;
+  const drawCue =
+    /^Will\s+.+\s+(?:vs\.?|v|@)\s+.+\s+end\s+in\s+a\s+draw\??$/i.test(title) &&
+    hasAnySlugToken(slug, [...SPORTS_SLUG_TOKENS]);
+  if (drawCue) return true;
 
   const lowerCategory = category.toLowerCase();
   const matchCue =

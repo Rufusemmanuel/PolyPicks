@@ -3,18 +3,18 @@ import { getMarketDetailsPayload } from '@/lib/polymarket/api';
 import {
   consumeRateLimitSignal,
   findFixtureMatch,
+  findFixtureForSingleTeamWithReason,
   getHeadToHead,
   getRecentMatches,
   getTeamDetails,
   isAmericanLeagueMarket,
   isFootballDataConfigured,
+  isLikelyCountryTeam,
   parseMatchupFromTitle,
   parseTeamFromSpreadTitle,
   parseSingleTeamWinFromTitle,
-  resolveOpponentFromFixtures,
   resolveCompetitionCandidates,
   resolveCompetitionCode,
-  TOP_COMPETITION_CODES,
 } from '@/lib/sports/providers/football-data';
 import type { MarketDetailsResponse, SportsEnrichment } from '@/lib/polymarket/types';
 
@@ -56,6 +56,11 @@ export async function GET(_: Request, { params }: Params) {
     const hasTeams = Boolean(matchup || singleTeam);
     const hasDate = Boolean(matchDate);
     const canAttemptSoccer = isSports && !isAmerican && hasDate && hasTeams;
+    const nationalCompetitionToken =
+      /(afcon|acn|world-cup|euro|nations-league|international|qualifiers|intl)/i.test(
+        market.slug,
+      ) ||
+      /(afcon|world cup|euro|nations league|international|qualifiers)/i.test(market.title);
 
     if (!isSports) {
       sportsMeta = { enabled: false, reason: 'not_soccer' };
@@ -72,57 +77,68 @@ export async function GET(_: Request, { params }: Params) {
         consumeRateLimitSignal();
         const competitionCandidates = resolveCompetitionCandidates(market.slug, market.title);
         const competitionCode = resolveCompetitionCode(market.slug);
-        try {
-          const tryFindFixture = async (code?: string | null) => {
-            if (matchup) {
-              return findFixtureMatch(matchDate!, matchup.teamA, matchup.teamB, code);
-            }
-            if (!code) return null;
-            return resolveOpponentFromFixtures(singleTeam!.team, matchDate!, [code]);
+        const isCountryTeam =
+          Boolean(singleTeam && isLikelyCountryTeam(singleTeam.team)) || nationalCompetitionToken;
+        if (!competitionCandidates.length && !competitionCode) {
+          sportsMeta = {
+            enabled: false,
+            reason: 'unsupported_competition',
           };
-
-          let fixture: Awaited<ReturnType<typeof tryFindFixture>> | null = null;
+          const payload: MarketDetailsResponse = {
+            ...market,
+            sportsMeta,
+          };
+          return NextResponse.json<MarketDetailsResponse>(payload, {
+            headers: { 'Cache-Control': 's-maxage=10, stale-while-revalidate=60' },
+          });
+        }
+        try {
           const orderedCandidates = [
             ...competitionCandidates,
             ...(competitionCode ? [competitionCode] : []),
           ];
-          for (const code of orderedCandidates) {
-            fixture = await tryFindFixture(code);
-            if (fixture) break;
-          }
+          let singleTeamReason: 'fixture_not_found' | 'team_not_found' | null = null;
+          let fixtureMatch: Awaited<ReturnType<typeof findFixtureMatch>> | null = null;
 
-          if (!fixture) {
-            fixture = matchup
-              ? null
-              : await resolveOpponentFromFixtures(
-                  singleTeam!.team,
-                  matchDate!,
-                  TOP_COMPETITION_CODES,
-                );
-            if (!fixture) {
-              for (const code of TOP_COMPETITION_CODES) {
-                fixture = await tryFindFixture(code);
-                if (fixture) break;
+          if (matchup) {
+            for (const code of orderedCandidates) {
+              const resolved = await findFixtureMatch(matchDate!, matchup.teamA, matchup.teamB, code);
+              if (resolved) {
+                fixtureMatch = resolved;
+                break;
               }
+            }
+          } else {
+            for (const code of orderedCandidates) {
+              const resolved = await findFixtureForSingleTeamWithReason(
+                matchDate!,
+                singleTeam!.team,
+                code,
+              );
+              if (resolved.fixture) {
+                fixtureMatch = resolved.fixture;
+                break;
+              }
+              singleTeamReason = resolved.reason;
             }
           }
 
-          if (fixture) {
+          if (fixtureMatch) {
             const [recentA, recentB, headToHead, detailsA, detailsB] =
               await Promise.all([
-                getRecentMatches(fixture.homeTeamId, 5),
-                getRecentMatches(fixture.awayTeamId, 5),
-                getHeadToHead(fixture.matchId, 5),
-                getTeamDetails(fixture.homeTeamId),
-                getTeamDetails(fixture.awayTeamId),
+                getRecentMatches(fixtureMatch.homeTeamId, 5),
+                getRecentMatches(fixtureMatch.awayTeamId, 5),
+                getHeadToHead(fixtureMatch.matchId, 5),
+                getTeamDetails(fixtureMatch.homeTeamId),
+                getTeamDetails(fixtureMatch.awayTeamId),
               ]);
 
             sports = {
               matchup: {
-                teamA: fixture.homeTeamName,
-                teamB: fixture.awayTeamName,
-                teamAId: fixture.homeTeamId,
-                teamBId: fixture.awayTeamId,
+                teamA: fixtureMatch.homeTeamName,
+                teamB: fixtureMatch.awayTeamName,
+                teamAId: fixtureMatch.homeTeamId,
+                teamBId: fixtureMatch.awayTeamId,
                 crestA: detailsA?.crest ?? null,
                 crestB: detailsB?.crest ?? null,
               },
@@ -134,13 +150,19 @@ export async function GET(_: Request, { params }: Params) {
           } else {
             sportsMeta = consumeRateLimitSignal()
               ? { enabled: false, reason: 'rate_limited' }
-              : { enabled: false, reason: 'fixture_not_found' };
+              : singleTeamReason === 'team_not_found'
+                ? { enabled: false, reason: 'team_not_found' }
+                : isCountryTeam
+                  ? { enabled: false, reason: 'unsupported_competition' }
+                  : { enabled: false, reason: 'fixture_not_found' };
           }
         } catch (err) {
           console.warn('[PolyPicks] sports enrichment skipped', err);
           sportsMeta = consumeRateLimitSignal()
             ? { enabled: false, reason: 'rate_limited' }
-            : { enabled: false, reason: 'upstream_error' };
+            : isCountryTeam
+              ? { enabled: false, reason: 'unsupported_competition' }
+              : { enabled: false, reason: 'upstream_error' };
         }
       }
     }

@@ -33,6 +33,9 @@ type CompetitionMatchesResponse = {
   matches: MatchResponse['matches'];
 };
 
+type FixtureResolution =
+  | { fixture: FixtureMatch; reason?: undefined }
+  | { fixture: null; reason: 'fixture_not_found' | 'team_not_found' };
 
 export type FootballTeam = {
   id: number;
@@ -108,6 +111,8 @@ export const normalizeTeamName = (name: string) => {
   const aliases: Record<string, string> = {
     wolves: 'wolverhampton wanderers',
     brighton: 'brighton and hove albion',
+    'ss lazio': 'lazio',
+    'acf fiorentina': 'fiorentina',
   };
   const abbreviations: Record<string, string> = {
     utd: 'united',
@@ -355,16 +360,14 @@ const scoreNameMatch = (query: string, candidate: string): number => {
   const normalizedCandidate = normalizeTeamName(candidate);
   if (!normalizedQuery || !normalizedCandidate) return 0;
   if (normalizedQuery === normalizedCandidate) return 100;
-  if (
-    normalizedCandidate.includes(normalizedQuery) ||
-    normalizedQuery.includes(normalizedCandidate)
-  ) {
-    return 90;
-  }
 
   const queryTokens = normalizedQuery.split(' ').filter(Boolean);
   const candidateTokens = normalizedCandidate.split(' ').filter(Boolean);
   if (!queryTokens.length || !candidateTokens.length) return 0;
+
+  if (queryTokens.length === 1 && candidateTokens.includes(queryTokens[0])) {
+    return 90;
+  }
 
   let overlap = 0;
   for (const queryToken of queryTokens) {
@@ -487,7 +490,7 @@ export const findFixtureForSingleTeam = async (
     }
   }
 
-  if (!best || bestScore < 60) return null;
+  if (!best || bestScore < 80) return null;
 
   return {
     matchId: best.id,
@@ -501,17 +504,47 @@ export const findFixtureForSingleTeam = async (
   };
 };
 
-export const resolveOpponentFromFixtures = async (
-  teamName: string,
+export const findFixtureForSingleTeamWithReason = async (
   matchDate: string,
-  competitionCodes: string[],
-): Promise<FixtureMatch | null> => {
-  for (const code of competitionCodes) {
-    const fixture = await findFixtureForSingleTeam(matchDate, teamName, code);
-    if (!fixture) continue;
-    return fixture;
+  teamName: string,
+  competitionCode: string,
+): Promise<FixtureResolution> => {
+  const response = await fetchMatchesByDate(matchDate, competitionCode);
+  if (!response?.matches?.length) return { fixture: null, reason: 'fixture_not_found' };
+
+  let best: MatchResponse['matches'][number] | null = null;
+  let bestScore = 0;
+
+  for (const match of response.matches) {
+    const homeScore = Math.max(
+      scoreNameMatch(teamName, match.homeTeam.name),
+      scoreNameMatch(teamName, match.homeTeam.shortName ?? ''),
+    );
+    const awayScore = Math.max(
+      scoreNameMatch(teamName, match.awayTeam.name),
+      scoreNameMatch(teamName, match.awayTeam.shortName ?? ''),
+    );
+    const score = Math.max(homeScore, awayScore);
+    if (score > bestScore) {
+      bestScore = score;
+      best = match;
+    }
   }
-  return null;
+
+  if (!best || bestScore < 80) return { fixture: null, reason: 'team_not_found' };
+
+  return {
+    fixture: {
+      matchId: best.id,
+      utcDate: best.utcDate,
+      competition: best.competition?.name ?? null,
+      competitionCode: best.competition?.code ?? competitionCode ?? null,
+      homeTeamId: best.homeTeam.id,
+      awayTeamId: best.awayTeam.id,
+      homeTeamName: best.homeTeam.name,
+      awayTeamName: best.awayTeam.name,
+    },
+  };
 };
 
 const competitionTokenMap: Record<string, string> = {
@@ -522,6 +555,8 @@ const competitionTokenMap: Record<string, string> = {
   'europa-league': 'EL',
   'conference-league': 'ECL',
   'la-liga': 'PD',
+  sea: 'SA',
+  sa: 'SA',
   'serie-a': 'SA',
   bundesliga: 'BL1',
   'ligue-1': 'FL1',
@@ -536,6 +571,25 @@ const competitionTokenMap: Record<string, string> = {
   'coppa-italia': 'CIT',
   'world-cup': 'WC',
 };
+
+const FOOTBALL_DATA_ALLOWLIST = new Set([
+  'PL',
+  'CL',
+  'EL',
+  'ECL',
+  'PD',
+  'SA',
+  'BL1',
+  'FL1',
+  'DED',
+  'PPL',
+  'ELC',
+  'FAC',
+  'EFL',
+  'CDR',
+  'CIT',
+  'WC',
+]);
 
 const hasTitleToken = (title: string, token: string) => {
   const normalized = title.toLowerCase();
@@ -552,25 +606,31 @@ export const resolveCompetitionCandidates = (slug: string, title: string): strin
   for (const [token, code] of Object.entries(competitionTokenMap)) {
     if (hasTitleToken(title, token)) candidates.push(code);
   }
-  return Array.from(new Set(candidates));
+  return Array.from(new Set(candidates)).filter((code) => FOOTBALL_DATA_ALLOWLIST.has(code));
 };
 
 export const resolveCompetitionCode = (slug: string) =>
   resolveCompetitionCandidates(slug, '')[0] ?? null;
 
-export const TOP_COMPETITION_CODES = [
-  'PL',
-  'PD',
-  'SA',
-  'BL1',
-  'FL1',
-  'DED',
-  'PPL',
-  'CL',
-  'EL',
-  'WC',
-  'ELC',
-];
+export const isLikelyCountryTeam = (name: string) => {
+  const normalized = normalizeName(name);
+  const tokens = normalized.split(' ').filter(Boolean);
+  if (tokens.length === 1 && tokens[0].length >= 4) return true;
+  const clubTokens = [
+    'fc',
+    'sc',
+    'cf',
+    'afc',
+    'united',
+    'city',
+    'ac',
+    'as',
+    'ss',
+    'calcio',
+    'club',
+  ];
+  return !clubTokens.some((token) => tokens.includes(token));
+};
 
 export const isSoccerMarket = (title: string, slug: string, tags?: string[]) => {
   const lowerSlug = slug.toLowerCase();

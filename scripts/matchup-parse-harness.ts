@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   isAmericanLeagueMarket,
   isSoccerMarket,
+  isLikelyCountryTeam,
   parseMatchupFromTitle,
   parseSingleTeamWinFromTitle,
   parseTeamFromSpreadTitle,
@@ -33,6 +34,10 @@ const cases = [
     title: 'Will Arsenal FC vs. Brighton & Hove Albion FC end in a draw?',
     expected: { teamA: 'Arsenal FC', teamB: 'Brighton & Hove Albion FC' },
   },
+  {
+    title: 'Will Coventry City FC vs. Swansea City AFC end in a draw?',
+    expected: { teamA: 'Coventry City FC', teamB: 'Swansea City AFC' },
+  },
 ];
 
 for (const testCase of cases) {
@@ -59,6 +64,10 @@ const singleTeamCases = [
     title: 'Will Manchester United FC win on 2025-12-26? O/U 1.5',
     expected: { team: 'Manchester United FC', date: '2025-12-26' },
   },
+  {
+    title: 'Will Mali win on 2025-12-26?',
+    expected: { team: 'Mali', date: '2025-12-26' },
+  },
 ];
 
 for (const testCase of singleTeamCases) {
@@ -83,6 +92,29 @@ for (const testCase of spreadCases) {
   const actual = parseTeamFromSpreadTitle(testCase.title);
   assert.ok(actual, testCase.title);
   assert.equal(actual?.team, testCase.expected.team, testCase.title);
+}
+
+const countryTeamCases = [
+  {
+    name: 'Country team detection for Mali',
+    team: 'Mali',
+    expected: true,
+  },
+  {
+    name: 'Club team detection for SS Lazio',
+    team: 'SS Lazio',
+    expected: false,
+  },
+  {
+    name: 'Club team detection for Wolverhampton Wanderers FC',
+    team: 'Wolverhampton Wanderers FC',
+    expected: false,
+  },
+];
+
+for (const testCase of countryTeamCases) {
+  const actual = isLikelyCountryTeam(testCase.team);
+  assert.equal(actual, testCase.expected, testCase.name);
 }
 
 const competitionCases = [

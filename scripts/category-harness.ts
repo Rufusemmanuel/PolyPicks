@@ -95,6 +95,33 @@ const cases = [
     }),
     expected: 'Sports',
   },
+  {
+    name: 'EFL Championship draw market is sports',
+    market: makeMarket({
+      question: 'Will Coventry City FC vs. Swansea City AFC end in a draw?',
+      slug: 'elc-cov-swa-2025-12-26-draw',
+      category: 'World',
+    }),
+    expected: 'Sports',
+  },
+  {
+    name: 'Serie A Lazio spread market is sports',
+    market: makeMarket({
+      question: 'Spread: SS Lazio (-1.5)',
+      slug: 'sea-udi-laz-2025-12-27-spread-away-1pt5',
+      category: 'World',
+    }),
+    expected: 'Sports',
+  },
+  {
+    name: 'Serie A Fiorentina spread market is sports',
+    market: makeMarket({
+      question: 'Spread: ACF Fiorentina (-1.5)',
+      slug: 'sea-par-fio-2025-12-27-spread-away-1pt5',
+      category: 'World',
+    }),
+    expected: 'Sports',
+  },
 ];
 
 for (const testCase of cases) {
