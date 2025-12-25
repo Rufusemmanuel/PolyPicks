@@ -42,6 +42,42 @@ const cases = [
     }),
     expected: 'World',
   },
+  {
+    name: 'Mali win market is sports',
+    market: makeMarket({
+      question: 'Will Mali win on penalties?',
+      slug: 'will-mali-win-on-penalties',
+      category: 'Games',
+    }),
+    expected: 'Sports',
+  },
+  {
+    name: 'NFLX close market is tech',
+    market: makeMarket({
+      question: 'NFLX close above $500?',
+      slug: 'nflx-close-above-500',
+      category: 'Games',
+    }),
+    expected: 'Tech',
+  },
+  {
+    name: 'NFL week market is sports',
+    market: makeMarket({
+      question: 'Will the NFL week 1 games start on time?',
+      slug: 'nfl-week-1',
+      category: 'Sports',
+    }),
+    expected: 'Sports',
+  },
+  {
+    name: 'Election win market is not sports',
+    market: makeMarket({
+      question: 'Will Trump win the election?',
+      slug: 'will-trump-win-the-election',
+      category: 'World',
+    }),
+    expected: 'Politics',
+  },
 ];
 
 for (const testCase of cases) {

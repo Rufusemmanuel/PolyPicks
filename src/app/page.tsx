@@ -47,17 +47,19 @@ const SUBDIVISIONS: Subdivision[] = [
 
 function mapToSubdivision(market: MarketWithStrings): Subdivision {
   const category = (market.category || '').toLowerCase();
+  const hasWord = (text: string, word: string) =>
+    new RegExp(`\\b${word}\\b`, 'i').test(text);
 
   if (category.includes('election')) return 'Elections';
   if (category.includes('politic')) return 'Politics';
 
   if (
     category.includes('sport') ||
-    category.includes('nba') ||
-    category.includes('nfl') ||
-    category.includes('mlb') ||
+    hasWord(category, 'nba') ||
+    hasWord(category, 'nfl') ||
+    hasWord(category, 'mlb') ||
     category.includes('soccer') ||
-    category.includes('f1')
+    hasWord(category, 'f1')
   ) {
     return 'Sports';
   }
