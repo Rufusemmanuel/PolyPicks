@@ -123,6 +123,7 @@ export type MarketDetailsResponse = {
   tags?: string[];
   volume: number;
   closesAt: string;
+  url: string;
   leading: { outcome: string; price: number; prob: number };
   about: { description?: string | null; resolution?: string | null; sourceUrl?: string | null };
   highConfidence: { min: number; max: number; currentProb: number; whyText: string };

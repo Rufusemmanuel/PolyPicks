@@ -3,6 +3,7 @@
 import { POLYMARKET_CONFIG } from '../config';
 import { getTopOfBook } from './clob';
 import { resolveCategory } from './category';
+import { getPolymarketMarketUrl } from './url';
 import type { MarketDetailsResponse, MarketPrice, MarketSummary, OutcomeSide, RawEvent, RawMarket } from './types';
 
 const fetchJson = async <T>(url: string): Promise<T> => {
@@ -115,10 +116,7 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
 
       // Use event slug when available (grouped markets), otherwise fall back to market slug.
       const eventSlug = m.events?.[0]?.slug ?? m.slug;
-      const marketUrl =
-        eventSlug && m.conditionId
-          ? `${POLYMARKET_CONFIG.marketPageBase}${eventSlug}?tid=${m.conditionId}`
-          : `${POLYMARKET_CONFIG.marketPageBase}${eventSlug ?? ''}`;
+      const marketUrl = getPolymarketMarketUrl(eventSlug, m.conditionId);
 
       const title = m.question ?? m.title ?? m.slug;
 
@@ -175,10 +173,7 @@ export const getMarketDetails = async (
   if (!price) return null;
 
   const eventSlug = market.events?.[0]?.slug ?? market.slug;
-  const marketUrl =
-    eventSlug && market.conditionId
-      ? `${POLYMARKET_CONFIG.marketPageBase}${eventSlug}?tid=${market.conditionId}`
-      : `${POLYMARKET_CONFIG.marketPageBase}${eventSlug ?? ''}`;
+  const marketUrl = getPolymarketMarketUrl(eventSlug, market.conditionId);
 
   const base: MarketSummary = {
     id: market.id,
@@ -226,10 +221,7 @@ export const getMarketDetailsPayload = async (
   if (!price) return null;
 
   const eventSlug = market.events?.[0]?.slug ?? market.slug;
-  const marketUrl =
-    eventSlug && market.conditionId
-      ? `${POLYMARKET_CONFIG.marketPageBase}${eventSlug}?tid=${market.conditionId}`
-      : `${POLYMARKET_CONFIG.marketPageBase}${eventSlug ?? ''}`;
+  const marketUrl = getPolymarketMarketUrl(eventSlug, market.conditionId);
 
   const description =
     normalizeToText(market.description) ??
@@ -264,6 +256,7 @@ export const getMarketDetailsPayload = async (
       resolution: resolutionRules,
       sourceUrl: marketUrl,
     },
+    url: marketUrl,
     highConfidence: {
       min: 0.75,
       max: 0.95,

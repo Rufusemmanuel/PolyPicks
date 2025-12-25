@@ -57,6 +57,55 @@ export function MarketDetailsDrawer({ marketId, isOpen, isDark, onClose }: Props
     details &&
     details.highConfidence.currentProb >= details.highConfidence.min &&
     details.highConfidence.currentProb <= details.highConfidence.max;
+  type MatchItem = NonNullable<MarketDetailsResponse['sports']>['recentA'][number];
+
+  const formatMatchMeta = (match: MatchItem) => {
+    const date = match.utcDate ? new Date(match.utcDate) : null;
+    const dateLabel = date && !Number.isNaN(date.getTime())
+      ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      : null;
+    const metaParts = [dateLabel, match.competition].filter(Boolean);
+    return metaParts.join(' | ');
+  };
+
+  const renderMatchLine = (match: MatchItem, teamName?: string) => {
+    if (teamName === match.homeTeam) {
+      return `${match.awayTeam} ${match.homeScore ?? '-'}-${match.awayScore ?? '-'}`;
+    }
+    if (teamName === match.awayTeam) {
+      return `${match.homeTeam} ${match.awayScore ?? '-'}-${match.homeScore ?? '-'}`;
+    }
+    return `${match.homeTeam} ${match.homeScore ?? '-'}-${match.awayScore ?? '-'} ${match.awayTeam}`;
+  };
+
+  const MatchList = ({
+    title,
+    matches,
+    teamName,
+  }: {
+    title: string;
+    matches: MatchItem[];
+    teamName?: string;
+  }) => (
+    <div className="space-y-2">
+      <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>{title}</p>
+      <ul className="space-y-2 text-sm">
+        {matches.map((match) => {
+          const meta = formatMatchMeta(match);
+          return (
+            <li key={`${match.utcDate}-${match.homeTeam}-${match.awayTeam}`} className="space-y-1">
+              <p className={isDark ? 'text-slate-200' : 'text-slate-800'}>
+                {renderMatchLine(match, teamName)}
+              </p>
+              {meta && (
+                <p className={isDark ? 'text-slate-500' : 'text-slate-400'}>{meta}</p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
 
   if (!isOpen) return null;
 
@@ -221,13 +270,15 @@ export function MarketDetailsDrawer({ marketId, isOpen, isDark, onClose }: Props
                         'No additional resolution details provided by Polymarket for this market.'}
                     </p>
                   </div>
-                  {details.about.sourceUrl && (
+                  {details.url && (
                     <a
-                      href={details.about.sourceUrl}
+                      href={details.url}
                       target="_blank"
                       rel="noreferrer"
                       className={`text-sm underline underline-offset-4 ${
-                        isDark ? 'text-slate-300 hover:text-slate-100' : 'text-slate-600 hover:text-slate-900'
+                        isDark
+                          ? 'text-slate-300 hover:text-slate-100'
+                          : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
                       View on Polymarket
@@ -287,45 +338,19 @@ export function MarketDetailsDrawer({ marketId, isOpen, isDark, onClose }: Props
                       </div>
                     </div>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-                          {details.sports.matchup.teamA} last 5
-                        </p>
-                        <ul className="space-y-1 text-sm">
-                          {details.sports.recentA.map((match) => (
-                            <li key={`${match.utcDate}-${match.homeTeam}-${match.awayTeam}`}>
-                              {match.homeTeam} {match.homeScore ?? '-'} -{' '}
-                              {match.awayScore ?? '-'} {match.awayTeam}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                      <div>
-                        <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-                          {details.sports.matchup.teamB} last 5
-                        </p>
-                        <ul className="space-y-1 text-sm">
-                          {details.sports.recentB.map((match) => (
-                            <li key={`${match.utcDate}-${match.homeTeam}-${match.awayTeam}`}>
-                              {match.homeTeam} {match.homeScore ?? '-'} -{' '}
-                              {match.awayScore ?? '-'} {match.awayTeam}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
+                      <MatchList
+                        title={`${details.sports.matchup.teamA} last 5 matches`}
+                        matches={details.sports.recentA}
+                        teamName={details.sports.matchup.teamA}
+                      />
+                      <MatchList
+                        title={`${details.sports.matchup.teamB} last 5 matches`}
+                        matches={details.sports.recentB}
+                        teamName={details.sports.matchup.teamB}
+                      />
                     </div>
                     {details.sports.headToHead.length > 0 && (
-                      <div>
-                        <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>Head to head</p>
-                        <ul className="space-y-1 text-sm">
-                          {details.sports.headToHead.map((match) => (
-                            <li key={`${match.utcDate}-${match.homeTeam}-${match.awayTeam}`}>
-                              {match.homeTeam} {match.homeScore ?? '-'} -{' '}
-                              {match.awayScore ?? '-'} {match.awayTeam}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
+                      <MatchList title="Head to head" matches={details.sports.headToHead} />
                     )}
                   </div>
                 )}
