@@ -270,20 +270,6 @@ export function MarketDetailsDrawer({ marketId, isOpen, isDark, onClose }: Props
                         'No additional resolution details provided by Polymarket for this market.'}
                     </p>
                   </div>
-                  {details.url && (
-                    <a
-                      href={details.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={`text-sm underline underline-offset-4 ${
-                        isDark
-                          ? 'text-slate-300 hover:text-slate-100'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      View on Polymarket
-                    </a>
-                  )}
                 </div>
               </section>
             )}

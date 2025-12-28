@@ -220,9 +220,6 @@ export const getMarketDetailsPayload = async (
       : null);
   if (!price) return null;
 
-  const eventSlug = market.events?.[0]?.slug ?? market.slug;
-  const marketUrl = getPolymarketMarketUrl(eventSlug, market.conditionId);
-
   const description =
     normalizeToText(market.description) ??
     normalizeToText(market.events?.[0]?.description) ??
@@ -254,9 +251,7 @@ export const getMarketDetailsPayload = async (
     about: {
       description,
       resolution: resolutionRules,
-      sourceUrl: marketUrl,
     },
-    url: marketUrl,
     highConfidence: {
       min: 0.75,
       max: 0.95,
