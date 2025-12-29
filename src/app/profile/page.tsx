@@ -55,7 +55,7 @@ export default function ProfilePage() {
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-400">Bookmarked markets</p>
             <p className="text-lg font-semibold">
-              {bookmarksQuery.data?.marketIds.length ?? 0}
+              {bookmarksQuery.data?.bookmarks.length ?? 0}
             </p>
           </div>
           <button

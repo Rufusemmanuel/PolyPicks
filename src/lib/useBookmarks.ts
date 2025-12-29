@@ -2,8 +2,14 @@
 
 import { useQuery } from '@tanstack/react-query';
 
+type BookmarkRecord = {
+  marketId: string;
+  createdAt: string;
+  initialPrice: number | null;
+};
+
 type BookmarksResponse = {
-  marketIds: string[];
+  bookmarks: BookmarkRecord[];
 };
 
 const fetchBookmarks = async (): Promise<BookmarksResponse> => {

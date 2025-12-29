@@ -264,39 +264,51 @@ function MarketsSection({
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [isSignUpOpen, setIsSignUpOpen] = useState(false);
   const [pendingBookmarkId, setPendingBookmarkId] = useState<string | null>(null);
+  const [pendingBookmarkPrice, setPendingBookmarkPrice] = useState<number | null>(null);
 
   const bookmarkedIds = useMemo(
-    () => new Set(bookmarksQuery.data?.marketIds ?? []),
-    [bookmarksQuery.data?.marketIds],
+    () => new Set(bookmarksQuery.data?.bookmarks.map((b) => b.marketId) ?? []),
+    [bookmarksQuery.data?.bookmarks],
   );
 
   const toggleBookmark = useMutation({
     mutationFn: async ({
       marketId,
       isBookmarked,
+      initialPrice,
     }: {
       marketId: string;
       isBookmarked: boolean;
+      initialPrice: number;
     }) => {
       const res = await fetch(
         isBookmarked ? `/api/bookmarks/${marketId}` : '/api/bookmarks',
         {
           method: isBookmarked ? 'DELETE' : 'POST',
           headers: isBookmarked ? undefined : { 'Content-Type': 'application/json' },
-          body: isBookmarked ? undefined : JSON.stringify({ marketId }),
+          body: isBookmarked ? undefined : JSON.stringify({ marketId, initialPrice }),
         },
       );
       if (!res.ok) throw new Error('Unable to update bookmark');
       return res.json();
     },
-    onMutate: async ({ marketId, isBookmarked }) => {
+    onMutate: async ({ marketId, isBookmarked, initialPrice }) => {
       await queryClient.cancelQueries({ queryKey: ['bookmarks'] });
-      const previous = queryClient.getQueryData<{ marketIds: string[] }>(['bookmarks']);
-      const prevIds = previous?.marketIds ?? [];
-      const nextIds = isBookmarked
-        ? prevIds.filter((id) => id !== marketId)
-        : [...prevIds, marketId];
-      queryClient.setQueryData(['bookmarks'], { marketIds: nextIds });
+      const previous = queryClient.getQueryData<{
+        bookmarks: { marketId: string; createdAt: string; initialPrice: number | null }[];
+      }>(['bookmarks']);
+      const prevBookmarks = previous?.bookmarks ?? [];
+      const nextBookmarks = isBookmarked
+        ? prevBookmarks.filter((b) => b.marketId !== marketId)
+        : [
+            ...prevBookmarks,
+            {
+              marketId,
+              createdAt: new Date().toISOString(),
+              initialPrice,
+            },
+          ];
+      queryClient.setQueryData(['bookmarks'], { bookmarks: nextBookmarks });
       return { previous };
     },
     onError: (_error, _vars, context) => {
@@ -309,15 +321,16 @@ function MarketsSection({
     },
   });
 
-  const handleToggleBookmark = (marketId: string) => {
+  const handleToggleBookmark = (marketId: string, initialPrice: number) => {
     if (!user) {
       setPendingBookmarkId(marketId);
+      setPendingBookmarkPrice(initialPrice);
       setIsSignUpOpen(true);
       return;
     }
 
     const isBookmarked = bookmarkedIds.has(marketId);
-    toggleBookmark.mutate({ marketId, isBookmarked });
+    toggleBookmark.mutate({ marketId, isBookmarked, initialPrice });
   };
 
   const handleSignUpSuccess = (nextUser: { id: string; name: string }) => {
@@ -325,8 +338,13 @@ function MarketsSection({
     setIsSignUpOpen(false);
 
     if (pendingBookmarkId) {
-      toggleBookmark.mutate({ marketId: pendingBookmarkId, isBookmarked: false });
+      toggleBookmark.mutate({
+        marketId: pendingBookmarkId,
+        isBookmarked: false,
+        initialPrice: pendingBookmarkPrice ?? 0,
+      });
       setPendingBookmarkId(null);
+      setPendingBookmarkPrice(null);
     }
   };
 
@@ -529,6 +547,7 @@ function MarketsSection({
         onClose={() => {
           setIsSignUpOpen(false);
           setPendingBookmarkId(null);
+          setPendingBookmarkPrice(null);
         }}
         onSuccess={handleSignUpSuccess}
       />
