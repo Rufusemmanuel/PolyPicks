@@ -202,6 +202,19 @@ function AnalyticsModal({
 
   const currentPrice = market?.price.price ?? details?.price ?? null;
   const delta = initial != null && currentPrice != null ? currentPrice - initial : null;
+  const changeCents = delta != null ? delta * 100 : null;
+  const changeClass =
+    delta == null
+      ? 'text-slate-300'
+      : delta > 0
+        ? 'text-emerald-400'
+        : delta < 0
+          ? 'text-red-400'
+          : 'text-slate-300';
+  const changeLabel =
+    delta == null
+      ? 'N/A'
+      : `${delta > 0 ? '+' : ''}${changeCents?.toFixed(1)}c`;
   const closedAt = market?.closedTime ?? market?.endDate ?? details?.closesAt ?? null;
   const closedDate = closedAt ? new Date(closedAt) : null;
   const isClosed = closedDate ? closedDate.getTime() <= Date.now() : false;
@@ -256,9 +269,7 @@ function AnalyticsModal({
           </div>
           <div>
             <p className="text-slate-400">Change</p>
-            <p className="font-semibold">
-              {delta != null ? `${delta >= 0 ? '+' : ''}${(delta * 100).toFixed(1)}c` : 'N/A'}
-            </p>
+            <p className={`font-semibold ${changeClass}`}>{changeLabel}</p>
           </div>
           <div>
             <p className="text-slate-400">Market status</p>
