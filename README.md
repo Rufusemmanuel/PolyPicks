@@ -17,5 +17,6 @@ Next.js 14 + Prisma dashboard for Polymarket markets.
   - Vercel will auto-run `npm run vercel-build` if present.
   - `vercel-build` runs migrations only when `VERCEL_ENV=production`.
   - Optional: set `ALLOW_DB_RESET_ON_FAILED_MIGRATIONS=1` to auto-reset a fresh database on failed migrations.
+- Do not run `prisma db pull` against production; it can overwrite `prisma/schema.prisma` and drop models that are not yet present in the database.
 
 The app uses the Polymarket Gamma/Data API and an optional RTDS WebSocket for live prices.
