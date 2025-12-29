@@ -27,10 +27,6 @@ export default function TradePage() {
     bookmarkedAt: string;
     initialPrice: number | null;
   } | null>(null);
-  const [selectedAlert, setSelectedAlert] = useState<{
-    marketId: string;
-    title: string;
-  } | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const alertsQuery = useAlerts(Boolean(user));
 
@@ -160,18 +156,6 @@ export default function TradePage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() =>
-                        setSelectedAlert({
-                          marketId: bookmark.marketId,
-                          title,
-                        })
-                      }
-                      className="inline-flex h-10 min-w-[110px] items-center justify-center whitespace-nowrap rounded-full border border-slate-700 px-4 text-xs font-semibold text-slate-200 transition hover:border-slate-400"
-                    >
-                      Alerts
-                    </button>
-                    <button
-                      type="button"
                       onClick={async () => {
                         setRemoveError(null);
                         try {
@@ -206,246 +190,11 @@ export default function TradePage() {
           marketId={selectedAnalytics.marketId}
           bookmarkedAt={selectedAnalytics.bookmarkedAt}
           initialPrice={selectedAnalytics.initialPrice}
+          alertsQuery={alertsQuery}
           onClose={() => setSelectedAnalytics(null)}
         />
       )}
-      {selectedAlert && (
-        <AlertsModal
-          marketId={selectedAlert.marketId}
-          title={selectedAlert.title}
-          alertsQuery={alertsQuery}
-          onClose={() => setSelectedAlert(null)}
-        />
-      )}
     </main>
-  );
-}
-
-function AlertsModal({
-  marketId,
-  title,
-  alertsQuery,
-  onClose,
-}: {
-  marketId: string;
-  title: string;
-  alertsQuery: ReturnType<typeof useAlerts>;
-  onClose: () => void;
-}) {
-  const [enabled, setEnabled] = useState(true);
-  const [profitInput, setProfitInput] = useState('');
-  const [lossInput, setLossInput] = useState('');
-  const [triggerOnce, setTriggerOnce] = useState(true);
-  const [cooldownInput, setCooldownInput] = useState('60');
-  const [message, setMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    const alert = alertsQuery.data?.alerts.find((item) => item.marketId === marketId);
-    setEnabled(alert?.enabled ?? true);
-    setProfitInput(
-      alert?.profitThresholdPct != null ? String(alert.profitThresholdPct) : '',
-    );
-    setLossInput(alert?.lossThresholdPct != null ? String(alert.lossThresholdPct) : '');
-    setTriggerOnce(alert?.triggerOnce ?? true);
-    setCooldownInput(
-      alert?.cooldownMinutes != null ? String(alert.cooldownMinutes) : '60',
-    );
-    setMessage(null);
-  }, [alertsQuery.data?.alerts, marketId]);
-
-  const parsePctInput = (value: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) return { value: null, error: false };
-    const num = Number(trimmed);
-    if (!Number.isFinite(num) || num <= 0) return { value: null, error: true };
-    return { value: num, error: false };
-  };
-
-  const parseCooldown = (value: string) => {
-    const trimmed = value.trim();
-    const num = Number(trimmed);
-    if (!Number.isFinite(num) || num <= 0) return { value: 60, error: true };
-    return { value: Math.floor(num), error: false };
-  };
-
-  const handleSave = async () => {
-    const profit = parsePctInput(profitInput);
-    const loss = parsePctInput(lossInput);
-    const cooldown = parseCooldown(cooldownInput);
-    if (profit.error || loss.error) {
-      setMessage('Thresholds must be greater than 0.');
-      return;
-    }
-    if (cooldown.error) {
-      setMessage('Cooldown must be a positive number of minutes.');
-      return;
-    }
-    if (profit.value == null && loss.value == null) {
-      setMessage('Add at least one threshold.');
-      return;
-    }
-    setMessage(null);
-    try {
-      await alertsQuery.saveAlert({
-        marketId,
-        profitThresholdPct: profit.value,
-        lossThresholdPct: loss.value,
-        triggerOnce,
-        cooldownMinutes: cooldown.value,
-        enabled,
-      });
-      setMessage('Alerts saved.');
-    } catch (error) {
-      console.error('[alerts] save error', error);
-      setMessage('Unable to save alerts right now.');
-    }
-  };
-
-  const handleDelete = async () => {
-    setMessage(null);
-    try {
-      await alertsQuery.deleteAlert(marketId);
-      onClose();
-    } catch (error) {
-      console.error('[alerts] delete error', error);
-      setMessage('Unable to delete alerts right now.');
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
-      <button
-        type="button"
-        aria-label="Close alerts"
-        className="absolute inset-0 bg-black/50"
-        onClick={onClose}
-      />
-      <div className="relative w-full max-w-sm rounded-2xl border border-slate-800 bg-[#0b1224] p-6 text-slate-100 shadow-2xl">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-blue-400">
-              Alerts
-            </p>
-            <h2 className="text-lg font-semibold">{title}</h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full border border-slate-600 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-400"
-          >
-            Close
-          </button>
-        </div>
-
-        <div className="mt-5 space-y-4 text-sm">
-          <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-[#0f182c] px-4 py-3">
-            <span className="text-sm text-slate-200">Alerts enabled</span>
-            <input
-              type="checkbox"
-              checked={enabled}
-              onChange={(event) => setEnabled(event.target.checked)}
-              className="h-4 w-4 accent-blue-500"
-            />
-          </label>
-
-          <div className="space-y-2">
-            <label className="text-xs uppercase tracking-wide text-slate-400">
-              Profit threshold (%)
-            </label>
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              value={profitInput}
-              onChange={(event) => setProfitInput(event.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
-              placeholder="e.g. 25"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs uppercase tracking-wide text-slate-400">
-              Loss threshold (%)
-            </label>
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              value={lossInput}
-              onChange={(event) => setLossInput(event.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
-              placeholder="e.g. 10"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs uppercase tracking-wide text-slate-400">
-              Trigger mode
-            </label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setTriggerOnce(true)}
-                className={`flex-1 rounded-full border px-3 py-2 text-xs font-semibold ${
-                  triggerOnce
-                    ? 'border-blue-400 text-blue-100'
-                    : 'border-slate-700 text-slate-300'
-                }`}
-              >
-                Notify once
-              </button>
-              <button
-                type="button"
-                onClick={() => setTriggerOnce(false)}
-                className={`flex-1 rounded-full border px-3 py-2 text-xs font-semibold ${
-                  !triggerOnce
-                    ? 'border-blue-400 text-blue-100'
-                    : 'border-slate-700 text-slate-300'
-                }`}
-              >
-                Notify repeatedly
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs uppercase tracking-wide text-slate-400">
-              Cooldown (minutes)
-            </label>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={cooldownInput}
-              onChange={(event) => setCooldownInput(event.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
-              placeholder="60"
-            />
-          </div>
-
-          {message && <p className="text-xs text-slate-400">{message}</p>}
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={alertsQuery.isSaving}
-              className="flex-1 rounded-full border border-blue-500/60 px-4 py-2 text-xs font-semibold text-blue-100 transition hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {alertsQuery.isSaving ? 'Saving...' : 'Save alerts'}
-            </button>
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={alertsQuery.isDeleting}
-              className="flex-1 rounded-full border border-red-500/60 px-4 py-2 text-xs font-semibold text-red-200 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {alertsQuery.isDeleting ? 'Deleting...' : 'Delete'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -454,12 +203,14 @@ function AnalyticsModal({
   marketId,
   bookmarkedAt,
   initialPrice,
+  alertsQuery,
   onClose,
 }: {
   market?: MarketWithStrings;
   marketId: string;
   bookmarkedAt: string;
   initialPrice: number | null;
+  alertsQuery: ReturnType<typeof useAlerts>;
   onClose: () => void;
 }) {
   const [details, setDetails] = useState<{
@@ -547,6 +298,86 @@ function AnalyticsModal({
     plPct == null ? null : `${plPct > 0 ? '+' : ''}${plPct.toFixed(1)}%`;
   const modalTitle = market?.title ?? details?.title ?? 'Market analytics';
   const modalCategory = market?.category ?? details?.category ?? '';
+  const [activeTab, setActiveTab] = useState<'analytics' | 'alerts'>('analytics');
+  const [enabled, setEnabled] = useState(true);
+  const [profitInput, setProfitInput] = useState('');
+  const [lossInput, setLossInput] = useState('');
+  const [triggerOnce, setTriggerOnce] = useState(true);
+  const [cooldownInput, setCooldownInput] = useState('60');
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const alert = alertsQuery.data?.alerts.find((item) => item.marketId === marketId);
+    setEnabled(alert?.enabled ?? true);
+    setProfitInput(
+      alert?.profitThresholdPct != null ? String(alert.profitThresholdPct) : '',
+    );
+    setLossInput(alert?.lossThresholdPct != null ? String(alert.lossThresholdPct) : '');
+    setTriggerOnce(alert?.triggerOnce ?? true);
+    setCooldownInput(
+      alert?.cooldownMinutes != null ? String(alert.cooldownMinutes) : '60',
+    );
+    setMessage(null);
+  }, [alertsQuery.data?.alerts, marketId]);
+
+  const parsePctInput = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return { value: null, error: false };
+    const num = Number(trimmed);
+    if (!Number.isFinite(num) || num <= 0) return { value: null, error: true };
+    return { value: num, error: false };
+  };
+
+  const parseCooldown = (value: string) => {
+    const trimmed = value.trim();
+    const num = Number(trimmed);
+    if (!Number.isFinite(num) || num <= 0) return { value: 60, error: true };
+    return { value: Math.floor(num), error: false };
+  };
+
+  const handleSaveAlerts = async () => {
+    const profit = parsePctInput(profitInput);
+    const loss = parsePctInput(lossInput);
+    const cooldown = parseCooldown(cooldownInput);
+    if (profit.error || loss.error) {
+      setMessage('Thresholds must be greater than 0.');
+      return;
+    }
+    if (cooldown.error) {
+      setMessage('Cooldown must be a positive number of minutes.');
+      return;
+    }
+    if (profit.value == null && loss.value == null) {
+      setMessage('Add at least one threshold.');
+      return;
+    }
+    setMessage(null);
+    try {
+      await alertsQuery.saveAlert({
+        marketId,
+        profitThresholdPct: profit.value,
+        lossThresholdPct: loss.value,
+        triggerOnce,
+        cooldownMinutes: cooldown.value,
+        enabled,
+      });
+      setMessage('Alerts saved.');
+    } catch (error) {
+      console.error('[alerts] save error', error);
+      setMessage('Unable to save alerts right now.');
+    }
+  };
+
+  const handleDeleteAlerts = async () => {
+    setMessage(null);
+    try {
+      await alertsQuery.deleteAlert(marketId);
+      setMessage('Alerts deleted.');
+    } catch (error) {
+      console.error('[alerts] delete error', error);
+      setMessage('Unable to delete alerts right now.');
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
@@ -574,80 +405,218 @@ function AnalyticsModal({
           </button>
         </div>
 
-        <div className="mt-5 grid grid-cols-1 gap-6 text-sm sm:grid-cols-[1fr_220px]">
-          <div className="space-y-3">
-            <div>
-              <p className="text-slate-400">Bookmarked</p>
-              <p className="font-semibold">
-                {formatDistanceToNow(bookmarkedDate, { addSuffix: true })}
-              </p>
-              <p className="text-xs text-slate-500">{bookmarkedDate.toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="text-slate-400">Price at bookmark</p>
-              <p className="font-semibold">
-                {initial != null ? `${(initial * 100).toFixed(1)}c` : 'N/A'}
-              </p>
-            </div>
-            <div>
-              <p className="text-slate-400">Current price</p>
-              <p className="font-semibold">
-                {currentPrice != null ? `${(currentPrice * 100).toFixed(1)}c` : 'N/A'}
-              </p>
-            </div>
-            <div>
-              <p className="text-slate-400">Change</p>
-              <p className={`font-semibold ${changeClass}`}>{changeLabel}</p>
-            </div>
-            <div>
-              <p className="text-slate-400">Market status</p>
-              <p className="font-semibold">{isClosed ? 'Closed' : 'Live'}</p>
-              {isClosed && closedDate && (
-                <p className="text-xs text-slate-500">{closedDate.toLocaleString()}</p>
-              )}
-            </div>
-            {isClosed && (
+        <div className="mt-5 flex flex-wrap gap-2 border-b border-white/10 pb-3">
+          {(['analytics', 'alerts'] as const).map((tab) => {
+            const isActive = activeTab === tab;
+            return (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={`rounded-full border px-4 py-1 text-xs font-semibold uppercase tracking-wide ${
+                  isActive
+                    ? 'border-blue-400 text-blue-200'
+                    : 'border-slate-700 text-slate-300'
+                }`}
+              >
+                {tab}
+              </button>
+            );
+          })}
+        </div>
+
+        {activeTab === 'analytics' && (
+          <div className="mt-5 grid grid-cols-1 gap-6 text-sm sm:grid-cols-[1fr_220px]">
+            <div className="space-y-3">
               <div>
-                <p className="text-slate-400">Final price</p>
+                <p className="text-slate-400">Bookmarked</p>
+                <p className="font-semibold">
+                  {formatDistanceToNow(bookmarkedDate, { addSuffix: true })}
+                </p>
+                <p className="text-xs text-slate-500">{bookmarkedDate.toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-slate-400">Price at bookmark</p>
+                <p className="font-semibold">
+                  {initial != null ? `${(initial * 100).toFixed(1)}c` : 'N/A'}
+                </p>
+              </div>
+              <div>
+                <p className="text-slate-400">Current price</p>
                 <p className="font-semibold">
                   {currentPrice != null ? `${(currentPrice * 100).toFixed(1)}c` : 'N/A'}
                 </p>
               </div>
-            )}
-          </div>
-          <div className="space-y-4">
-            {isClosed && plDeltaCents != null && plPct != null && (
-              <div className={`h-fit rounded-2xl border p-4 ${plClass}`}>
-                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-300">
-                  <span>P/L</span>
-                  <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-inherit">
-                    {plStatus}
-                  </span>
+              <div>
+                <p className="text-slate-400">Change</p>
+                <p className={`font-semibold ${changeClass}`}>{changeLabel}</p>
+              </div>
+              <div>
+                <p className="text-slate-400">Market status</p>
+                <p className="font-semibold">{isClosed ? 'Closed' : 'Live'}</p>
+                {isClosed && closedDate && (
+                  <p className="text-xs text-slate-500">{closedDate.toLocaleString()}</p>
+                )}
+              </div>
+              {isClosed && (
+                <div>
+                  <p className="text-slate-400">Final price</p>
+                  <p className="font-semibold">
+                    {currentPrice != null ? `${(currentPrice * 100).toFixed(1)}c` : 'N/A'}
+                  </p>
                 </div>
-                <div className="mt-3 text-2xl font-semibold text-inherit">{plDeltaLabel}</div>
-                <p className="mt-1 text-xs text-inherit">
-                  {plPctLabel} {plStatus?.toLowerCase()}
-                </p>
-                <div className="mt-4 border-t border-white/10 pt-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-slate-400">Entry</p>
-                      <p className="text-sm font-semibold text-slate-100">
-                        {entryCents?.toFixed(1)}c
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs uppercase tracking-wide text-slate-400">Exit</p>
-                      <p className="text-sm font-semibold text-slate-100">
-                        {exitCents?.toFixed(1)}c
-                      </p>
+              )}
+            </div>
+            <div className="space-y-4">
+              {isClosed && plDeltaCents != null && plPct != null && (
+                <div className={`h-fit rounded-2xl border p-4 ${plClass}`}>
+                  <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    <span>P/L</span>
+                    <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-inherit">
+                      {plStatus}
+                    </span>
+                  </div>
+                  <div className="mt-3 text-2xl font-semibold text-inherit">
+                    {plDeltaLabel}
+                  </div>
+                  <p className="mt-1 text-xs text-inherit">
+                    {plPctLabel} {plStatus?.toLowerCase()}
+                  </p>
+                  <div className="mt-4 border-t border-white/10 pt-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                          Entry
+                        </p>
+                        <p className="text-sm font-semibold text-slate-100">
+                          {entryCents?.toFixed(1)}c
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                          Exit
+                        </p>
+                        <p className="text-sm font-semibold text-slate-100">
+                          {exitCents?.toFixed(1)}c
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
+
+        {activeTab === 'alerts' && (
+          <div className="mt-5 space-y-4 text-sm">
+            <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-[#0f182c] px-4 py-3">
+              <span className="text-sm text-slate-200">Alerts enabled</span>
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={(event) => setEnabled(event.target.checked)}
+                className="h-4 w-4 accent-blue-500"
+              />
+            </label>
+
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-wide text-slate-400">
+                Profit threshold (%)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={profitInput}
+                onChange={(event) => setProfitInput(event.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+                placeholder="e.g. 25"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-wide text-slate-400">
+                Loss threshold (%)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={lossInput}
+                onChange={(event) => setLossInput(event.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+                placeholder="e.g. 10"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-wide text-slate-400">
+                Trigger mode
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTriggerOnce(true)}
+                  className={`flex-1 rounded-full border px-3 py-2 text-xs font-semibold ${
+                    triggerOnce
+                      ? 'border-blue-400 text-blue-100'
+                      : 'border-slate-700 text-slate-300'
+                  }`}
+                >
+                  Notify once
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTriggerOnce(false)}
+                  className={`flex-1 rounded-full border px-3 py-2 text-xs font-semibold ${
+                    !triggerOnce
+                      ? 'border-blue-400 text-blue-100'
+                      : 'border-slate-700 text-slate-300'
+                  }`}
+                >
+                  Notify repeatedly
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs uppercase tracking-wide text-slate-400">
+                Cooldown (minutes)
+              </label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={cooldownInput}
+                onChange={(event) => setCooldownInput(event.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+                placeholder="60"
+              />
+            </div>
+
+            {message && <p className="text-xs text-slate-400">{message}</p>}
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleSaveAlerts}
+                disabled={alertsQuery.isSaving}
+                className="flex-1 rounded-full border border-blue-500/60 px-4 py-2 text-xs font-semibold text-blue-100 transition hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {alertsQuery.isSaving ? 'Saving...' : 'Save alerts'}
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAlerts}
+                disabled={alertsQuery.isDeleting}
+                className="flex-1 rounded-full border border-red-500/60 px-4 py-2 text-xs font-semibold text-red-200 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {alertsQuery.isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
