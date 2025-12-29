@@ -26,6 +26,7 @@ export default function TradePage() {
     bookmarkedAt: string;
     initialPrice: number | null;
   } | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (sessionQuery.isLoading) return;
@@ -73,6 +74,7 @@ export default function TradePage() {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
             Bookmarked markets
           </h2>
+          {removeError && <p className="text-sm text-red-300">{removeError}</p>}
           {bookmarkedMarkets.length === 0 && (
             <p className="text-sm text-slate-400">No bookmarks yet.</p>
           )}
@@ -96,7 +98,7 @@ export default function TradePage() {
                       {title}
                     </p>
                   </div>
-                  <div className="flex w-full flex-col gap-3 sm:w-[320px] sm:flex-shrink-0 sm:flex-row sm:justify-end">
+                  <div className="flex w-full flex-col gap-3 sm:w-[420px] sm:flex-shrink-0 sm:flex-row sm:justify-end">
                     <button
                       type="button"
                       onClick={() =>
@@ -106,9 +108,24 @@ export default function TradePage() {
                           initialPrice: bookmark.initialPrice,
                         })
                       }
-                      className="h-10 min-w-[140px] whitespace-nowrap rounded-full border border-slate-700 px-4 text-xs font-semibold text-slate-200 transition hover:border-slate-400"
+                      className="h-10 min-w-[130px] whitespace-nowrap rounded-full border border-slate-700 px-4 text-xs font-semibold text-slate-200 transition hover:border-slate-400"
                     >
                       Analytics
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setRemoveError(null);
+                        try {
+                          await bookmarksQuery.removeBookmark(bookmark.marketId);
+                        } catch (error) {
+                          console.error('[trade] remove bookmark error', error);
+                          setRemoveError('Unable to remove bookmark. Please try again.');
+                        }
+                      }}
+                      className="h-10 min-w-[110px] whitespace-nowrap rounded-full border border-red-500/60 px-4 text-xs font-semibold text-red-200 transition hover:border-red-400"
+                    >
+                      Remove
                     </button>
                     <a
                       href={marketUrl}
