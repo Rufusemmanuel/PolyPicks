@@ -108,7 +108,7 @@ export default function TradePage() {
                           initialPrice: bookmark.initialPrice,
                         })
                       }
-                      className="h-10 min-w-[130px] whitespace-nowrap rounded-full border border-slate-700 px-4 text-xs font-semibold text-slate-200 transition hover:border-slate-400"
+                      className="inline-flex h-10 min-w-[130px] items-center justify-center whitespace-nowrap rounded-full border border-slate-700 px-4 text-xs font-semibold text-slate-200 transition hover:border-slate-400"
                     >
                       Analytics
                     </button>
@@ -123,7 +123,7 @@ export default function TradePage() {
                           setRemoveError('Unable to remove bookmark. Please try again.');
                         }
                       }}
-                      className="h-10 min-w-[110px] whitespace-nowrap rounded-full border border-red-500/60 px-4 text-xs font-semibold text-red-200 transition hover:border-red-400"
+                      className="inline-flex h-10 min-w-[110px] items-center justify-center whitespace-nowrap rounded-full border border-red-500/60 px-4 text-xs font-semibold text-red-200 transition hover:border-red-400"
                     >
                       Remove
                     </button>
@@ -131,7 +131,7 @@ export default function TradePage() {
                       href={marketUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="h-10 min-w-[180px] whitespace-nowrap rounded-full bg-[#002cff] px-5 text-xs font-semibold text-white transition hover:bg-blue-700"
+                      className="inline-flex h-10 min-w-[180px] items-center justify-center whitespace-nowrap rounded-full bg-[#002cff] px-4 text-xs font-semibold text-white transition hover:bg-blue-700"
                     >
                       Trade on Polymarket
                     </a>
@@ -333,9 +333,22 @@ function AnalyticsModal({
               <p className="mt-1 text-xs text-inherit">
                 {plPctLabel} {plStatus?.toLowerCase()}
               </p>
-              <p className="mt-3 text-[11px] text-slate-300">
-                Entry {entryCents?.toFixed(1)}c · Exit {exitCents?.toFixed(1)}c
-              </p>
+              <div className="mt-4 border-t border-white/10 pt-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-slate-400">Entry</p>
+                    <p className="text-sm font-semibold text-slate-100">
+                      {entryCents?.toFixed(1)}c
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">Exit</p>
+                    <p className="text-sm font-semibold text-slate-100">
+                      {exitCents?.toFixed(1)}c
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>

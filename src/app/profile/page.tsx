@@ -49,7 +49,7 @@ export default function ProfilePage() {
         </div>
         <div className="rounded-2xl border border-slate-800 bg-[#0f182c] p-6 space-y-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-slate-400">Name</p>
+            <p className="text-xs uppercase tracking-wide text-slate-400">Username</p>
             <p className="text-lg font-semibold">{user.name}</p>
           </div>
           <div>
