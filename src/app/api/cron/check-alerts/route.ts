@@ -6,6 +6,22 @@ import { getUserFromRequest } from '@/lib/auth';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const getMissingTableCode = (error: unknown) => {
+  const err = error as { code?: string; message?: string };
+  if (err?.code === 'P2021') return err.code;
+  if (/does not exist/i.test(err?.message ?? '')) return err?.code ?? 'P2021';
+  return null;
+};
+
+const migrationPendingResponse = (code?: string) =>
+  NextResponse.json(
+    {
+      error: 'Database migration pending. Redeploy to apply migrations.',
+      ...(code ? { code } : {}),
+    },
+    { status: 503 },
+  );
+
 const CRON_SECRET = process.env.CRON_SECRET;
 
 const isAuthorized = (request: NextRequest) => {
@@ -115,6 +131,10 @@ export async function POST(request: NextRequest) {
       triggered,
     });
   } catch (error) {
+    const missingCode = getMissingTableCode(error);
+    if (missingCode) {
+      return migrationPendingResponse(missingCode);
+    }
     const err = error as { message?: string; code?: string };
     console.error('[cron/check-alerts] error', err);
     return NextResponse.json(
