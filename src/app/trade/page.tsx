@@ -218,6 +218,39 @@ function AnalyticsModal({
   const closedAt = market?.closedTime ?? market?.endDate ?? details?.closesAt ?? null;
   const closedDate = closedAt ? new Date(closedAt) : null;
   const isClosed = closedDate ? closedDate.getTime() <= Date.now() : false;
+  const finalPrice = isClosed && currentPrice != null ? currentPrice : null;
+  const entryCents = initial != null ? initial * 100 : null;
+  const exitCents = finalPrice != null ? finalPrice * 100 : null;
+  const plDeltaCents =
+    entryCents != null && exitCents != null ? exitCents - entryCents : null;
+  const plPct =
+    entryCents != null && entryCents > 0 && plDeltaCents != null
+      ? (plDeltaCents / entryCents) * 100
+      : entryCents != null
+        ? 0
+        : null;
+  const plStatus =
+    plDeltaCents == null
+      ? null
+      : plDeltaCents > 0
+        ? 'Profit'
+        : plDeltaCents < 0
+          ? 'Loss'
+          : 'Break-even';
+  const plClass =
+    plDeltaCents == null
+      ? 'border-white/10 bg-white/5 text-slate-300'
+      : plDeltaCents > 0
+        ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200'
+        : plDeltaCents < 0
+          ? 'border-red-400/20 bg-red-500/10 text-red-200'
+          : 'border-white/10 bg-white/5 text-slate-300';
+  const plDeltaLabel =
+    plDeltaCents == null
+      ? null
+      : `${plDeltaCents > 0 ? '+' : ''}${plDeltaCents.toFixed(1)}c`;
+  const plPctLabel =
+    plPct == null ? null : `${plPct > 0 ? '+' : ''}${plPct.toFixed(1)}%`;
   const modalTitle = market?.title ?? details?.title ?? 'Market analytics';
   const modalCategory = market?.category ?? details?.category ?? '';
 
@@ -247,42 +280,61 @@ function AnalyticsModal({
           </button>
         </div>
 
-        <div className="mt-5 space-y-3 text-sm">
-          <div>
-            <p className="text-slate-400">Bookmarked</p>
-            <p className="font-semibold">
-              {formatDistanceToNow(bookmarkedDate, { addSuffix: true })}
-            </p>
-            <p className="text-xs text-slate-500">{bookmarkedDate.toLocaleString()}</p>
-          </div>
-          <div>
-            <p className="text-slate-400">Price at bookmark</p>
-            <p className="font-semibold">
-              {initial != null ? `${(initial * 100).toFixed(1)}c` : 'N/A'}
-            </p>
-          </div>
-          <div>
-            <p className="text-slate-400">Current price</p>
-            <p className="font-semibold">
-              {currentPrice != null ? `${(currentPrice * 100).toFixed(1)}c` : 'N/A'}
-            </p>
-          </div>
-          <div>
-            <p className="text-slate-400">Change</p>
-            <p className={`font-semibold ${changeClass}`}>{changeLabel}</p>
-          </div>
-          <div>
-            <p className="text-slate-400">Market status</p>
-            <p className="font-semibold">{isClosed ? 'Closed' : 'Live'}</p>
-            {isClosed && closedDate && (
-              <p className="text-xs text-slate-500">{closedDate.toLocaleString()}</p>
-            )}
-          </div>
-          {isClosed && (
+        <div className="mt-5 grid grid-cols-1 gap-6 text-sm sm:grid-cols-[1fr_220px]">
+          <div className="space-y-3">
             <div>
-              <p className="text-slate-400">Final price</p>
+              <p className="text-slate-400">Bookmarked</p>
+              <p className="font-semibold">
+                {formatDistanceToNow(bookmarkedDate, { addSuffix: true })}
+              </p>
+              <p className="text-xs text-slate-500">{bookmarkedDate.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-slate-400">Price at bookmark</p>
+              <p className="font-semibold">
+                {initial != null ? `${(initial * 100).toFixed(1)}c` : 'N/A'}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-400">Current price</p>
               <p className="font-semibold">
                 {currentPrice != null ? `${(currentPrice * 100).toFixed(1)}c` : 'N/A'}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-400">Change</p>
+              <p className={`font-semibold ${changeClass}`}>{changeLabel}</p>
+            </div>
+            <div>
+              <p className="text-slate-400">Market status</p>
+              <p className="font-semibold">{isClosed ? 'Closed' : 'Live'}</p>
+              {isClosed && closedDate && (
+                <p className="text-xs text-slate-500">{closedDate.toLocaleString()}</p>
+              )}
+            </div>
+            {isClosed && (
+              <div>
+                <p className="text-slate-400">Final price</p>
+                <p className="font-semibold">
+                  {currentPrice != null ? `${(currentPrice * 100).toFixed(1)}c` : 'N/A'}
+                </p>
+              </div>
+            )}
+          </div>
+          {isClosed && plDeltaCents != null && plPct != null && (
+            <div className={`h-fit rounded-2xl border p-4 ${plClass}`}>
+              <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-300">
+                <span>P/L</span>
+                <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-inherit">
+                  {plStatus}
+                </span>
+              </div>
+              <div className="mt-3 text-2xl font-semibold text-inherit">{plDeltaLabel}</div>
+              <p className="mt-1 text-xs text-inherit">
+                {plPctLabel} {plStatus?.toLowerCase()}
+              </p>
+              <p className="mt-3 text-[11px] text-slate-300">
+                Entry {entryCents?.toFixed(1)}c · Exit {exitCents?.toFixed(1)}c
               </p>
             </div>
           )}
