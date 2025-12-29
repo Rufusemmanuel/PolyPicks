@@ -60,7 +60,7 @@ export function Navbar() {
 
   const clearAuthParam = () => {
     if (!searchParams.get('auth')) return;
-    router.replace(pathname, { scroll: false });
+    router.replace(pathname as string, { scroll: false });
   };
 
   const handleLoginSuccess = (nextUser: { id: string; name: string }) => {
