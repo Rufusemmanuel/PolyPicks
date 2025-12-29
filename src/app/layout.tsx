@@ -1,5 +1,5 @@
 // src/app/layout.tsx
-import React from 'react';
+import React, { Suspense } from 'react';
 import type { Metadata } from 'next';
 import './globals.css';
 import { Providers } from '@/components/providers';
@@ -22,7 +22,9 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <Providers>
-          <Navbar />
+          <Suspense fallback={null}>
+            <Navbar />
+          </Suspense>
           {children}
         </Providers>
       </body>
