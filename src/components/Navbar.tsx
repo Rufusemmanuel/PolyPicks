@@ -10,8 +10,8 @@ import { SignUpModal } from '@/components/SignUpModal';
 import { LoginModal } from '@/components/LoginModal';
 
 const navItems = [
-  { label: 'Markets', href: '#markets' },
-  { label: 'About', href: '#about' },
+  { label: 'Markets', href: '/' as const, kind: 'link' as const },
+  { label: 'About', href: '#about', kind: 'anchor' as const },
 ];
 
 export function Navbar() {
@@ -96,11 +96,25 @@ export function Navbar() {
           <span className="text-xl font-semibold">PolyPicks</span>
         </Link>
         <nav className="hidden items-center gap-6 text-sm font-medium md:flex">
-          {navItems.map((item) => (
-            <a key={item.href} href={item.href} className="text-slate-300 hover:text-white">
-              {item.label}
-            </a>
-          ))}
+          {navItems.map((item) =>
+            item.kind === 'link' ? (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="text-slate-300 hover:text-white"
+              >
+                {item.label}
+              </Link>
+            ) : (
+              <a
+                key={item.href}
+                href={item.href}
+                className="text-slate-300 hover:text-white"
+              >
+                {item.label}
+              </a>
+            ),
+          )}
         </nav>
         <div className="flex items-center gap-2">
           {!user && (
@@ -147,7 +161,7 @@ export function Navbar() {
                     className="block rounded-lg px-3 py-2 text-slate-200 hover:bg-slate-800"
                     onClick={() => setIsMenuOpen(false)}
                   >
-                    Trade
+                    Trades
                   </Link>
                   <button
                     type="button"
