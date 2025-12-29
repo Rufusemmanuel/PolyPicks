@@ -161,66 +161,50 @@ export default function TradeClient() {
                   key={bookmark.marketId}
                   className="flex flex-col gap-4 rounded-xl border border-slate-800 bg-[#0b1224] p-4 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div className="min-w-0 flex-1 space-y-1">
+                  <div className="min-w-0 flex-1 space-y-2">
                     <p className="text-sm text-slate-400">{category}</p>
-                    <p
-                      className="truncate text-base font-semibold text-slate-100"
-                      title={title}
-                    >
-                      {title}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p
+                        className="truncate text-base font-semibold text-slate-100"
+                        title={title}
+                      >
+                        {title}
+                      </p>
+                      {alert && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedAnalytics({
+                              marketId: bookmark.marketId,
+                              bookmarkedAt: bookmark.createdAt,
+                              initialPrice: bookmark.initialPrice,
+                              initialTab: 'alerts',
+                            })
+                          }
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                            alert.enabled
+                              ? 'border-blue-500/60 text-blue-100 hover:border-blue-400'
+                              : 'border-slate-700 text-slate-400 hover:border-slate-500'
+                          }`}
+                        >
+                          <span aria-hidden="true">🔔</span>
+                          <span>
+                            {[
+                              alert.profitThresholdPct != null
+                                ? `+${alert.profitThresholdPct.toFixed(0)}`
+                                : null,
+                              alert.lossThresholdPct != null
+                                ? `-${alert.lossThresholdPct.toFixed(0)}`
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' / ') || 'Alert'}
+                          </span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="flex w-full flex-col gap-3 sm:w-[420px] sm:flex-shrink-0 sm:flex-row sm:justify-end">
-                    {alert && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSelectedAnalytics({
-                            marketId: bookmark.marketId,
-                            bookmarkedAt: bookmark.createdAt,
-                            initialPrice: bookmark.initialPrice,
-                            initialTab: 'alerts',
-                          })
-                        }
-                        className={`inline-flex h-10 min-w-[90px] items-center justify-center gap-2 whitespace-nowrap rounded-full border px-3 text-xs font-semibold transition ${
-                          alert.enabled
-                            ? 'border-blue-500/60 text-blue-100 hover:border-blue-400'
-                            : 'border-slate-700 text-slate-400 hover:border-slate-500'
-                        }`}
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path
-                            d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                          <path
-                            d="M9 17a3 3 0 0 0 6 0"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                        <span className="text-[11px]">
-                          {[
-                            alert.profitThresholdPct != null
-                              ? `+${alert.profitThresholdPct.toFixed(0)}`
-                              : null,
-                            alert.lossThresholdPct != null
-                              ? `-${alert.lossThresholdPct.toFixed(0)}`
-                              : null,
-                          ]
-                            .filter(Boolean)
-                            .join(' / ') || 'Alert'}
-                        </span>
-                      </button>
-                    )}
                     <button
                       type="button"
                       onClick={() =>
