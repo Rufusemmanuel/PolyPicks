@@ -25,6 +25,15 @@ const truncate = (s: string, max = 76) => {
   return `${str.slice(0, max - 3).trimEnd()}...`;
 };
 
+const COL_WIDTHS = {
+  market: '40%',
+  category: '10%',
+  bookmarked: '20%',
+  pl: '10%',
+  returnPct: '10%',
+  status: '10%',
+} as const;
+
 const styles = StyleSheet.create({
   page: {
     paddingTop: 36,
@@ -113,31 +122,38 @@ const styles = StyleSheet.create({
     border: `1px solid ${EXPORT_BRAND.border}`,
     borderRadius: 8,
     overflow: 'hidden',
-    paddingTop: 18,
+    width: '100%',
+    marginTop: 14,
   },
   tableHeader: {
     flexDirection: 'row',
     backgroundColor: EXPORT_BRAND.primary,
     color: 'white',
-    paddingVertical: 6,
-    paddingHorizontal: 8,
   },
   tableRow: {
     flexDirection: 'row',
-    paddingVertical: 8,
-    paddingHorizontal: 8,
     borderBottom: `1px solid ${EXPORT_BRAND.border}`,
     minHeight: 32,
   },
-  cellMarket: { width: '42%' },
-  cellCategory: { width: '10%' },
-  cellBookmarked: { width: '22%' },
-  cellPL: { width: '10%' },
-  cellReturn: { width: '8%' },
-  cellStatus: { width: '8%' },
+  headerCell: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRightWidth: 1,
+    borderRightColor: '#ffffff22',
+  },
+  bodyCell: {
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
+  cellMarket: { width: COL_WIDTHS.market },
+  cellCategory: { width: COL_WIDTHS.category },
+  cellBookmarked: { width: COL_WIDTHS.bookmarked },
+  cellPL: { width: COL_WIDTHS.pl },
+  cellReturn: { width: COL_WIDTHS.returnPct },
+  cellStatus: { width: COL_WIDTHS.status },
   headerText: {
-    fontSize: 9,
-    fontWeight: 600,
+    fontSize: 9.5,
+    fontWeight: 700,
   },
   bodyText: {
     fontSize: 10,
@@ -147,19 +163,25 @@ const styles = StyleSheet.create({
     fontWeight: 600,
   },
   bodyTextMuted: {
-    fontSize: 9,
+    fontSize: 8.5,
     color: '#64748b',
+  },
+  bodyTextSmall: {
+    fontSize: 9.5,
+    color: '#334155',
+    fontWeight: 600,
   },
   alignRight: {
     textAlign: 'right',
   },
   statusPill: {
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-    borderRadius: 10,
-    fontSize: 8,
-    fontWeight: 700,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    fontSize: 8.5,
+    fontWeight: 600,
     alignSelf: 'flex-start',
+    textAlign: 'center',
   },
   footer: {
     marginTop: 12,
@@ -275,14 +297,24 @@ export function HistoryPdf({
 
         <View style={styles.table}>
           <View style={styles.tableHeader} fixed>
-            <Text style={[styles.headerText, styles.cellMarket]}>Market</Text>
-            <Text style={[styles.headerText, styles.cellCategory]}>Category</Text>
-            <Text style={[styles.headerText, styles.cellBookmarked]}>Bookmarked</Text>
-            <Text style={[styles.headerText, styles.cellPL, styles.alignRight]}>P/L</Text>
-            <Text style={[styles.headerText, styles.cellReturn, styles.alignRight]}>
-              Return
-            </Text>
-            <Text style={[styles.headerText, styles.cellStatus]}>Status</Text>
+            <View style={[styles.headerCell, styles.cellMarket]}>
+              <Text style={styles.headerText}>Market</Text>
+            </View>
+            <View style={[styles.headerCell, styles.cellCategory]}>
+              <Text style={styles.headerText}>Category</Text>
+            </View>
+            <View style={[styles.headerCell, styles.cellBookmarked]}>
+              <Text style={styles.headerText}>Bookmarked</Text>
+            </View>
+            <View style={[styles.headerCell, styles.cellPL]}>
+              <Text style={[styles.headerText, styles.alignRight]}>P/L</Text>
+            </View>
+            <View style={[styles.headerCell, styles.cellReturn]}>
+              <Text style={[styles.headerText, styles.alignRight]}>Return</Text>
+            </View>
+            <View style={[styles.headerCell, styles.cellStatus, { borderRightWidth: 0 }]}>
+              <Text style={styles.headerText}>Status</Text>
+            </View>
           </View>
 
           {rows.map((row, index) => {
@@ -290,23 +322,29 @@ export function HistoryPdf({
             const statusStyle = statusColors[row.status];
             return (
               <View key={row.id} style={[styles.tableRow, { backgroundColor: stripe }]}>
-                <Text style={[styles.bodyText, styles.bodyTextStrong, styles.cellMarket]}>
-                  {truncate(row.title ?? 'Unknown market', 72)}
-                </Text>
-                <Text style={[styles.bodyTextMuted, styles.cellCategory]}>
-                  {row.category ?? 'Unknown'}
-                </Text>
-                <View style={styles.cellBookmarked}>
-                  <Text style={styles.bodyText}>{formatDate(row.createdAt)}</Text>
+                <View style={[styles.bodyCell, styles.cellMarket]}>
+                  <Text style={[styles.bodyText, styles.bodyTextStrong]}>
+                    {truncate(row.title ?? 'Unknown market', 72)}
+                  </Text>
+                </View>
+                <View style={[styles.bodyCell, styles.cellCategory]}>
+                  <Text style={styles.bodyTextMuted}>{row.category ?? 'Unknown'}</Text>
+                </View>
+                <View style={[styles.bodyCell, styles.cellBookmarked]}>
+                  <Text style={styles.bodyTextSmall}>{formatDate(row.createdAt)}</Text>
                   <Text style={styles.bodyTextMuted}>{formatTime(row.createdAt)}</Text>
                 </View>
-                <Text style={[styles.bodyText, styles.cellPL, styles.alignRight]}>
-                  {formatSignedCents(row.profitDelta)}
-                </Text>
-                <Text style={[styles.bodyText, styles.cellReturn, styles.alignRight]}>
-                  {formatPct(row.returnPct)}
-                </Text>
-                <View style={[styles.cellStatus, { alignItems: 'flex-start' }]}>
+                <View style={[styles.bodyCell, styles.cellPL]}>
+                  <Text style={[styles.bodyText, styles.alignRight]}>
+                    {formatSignedCents(row.profitDelta)}
+                  </Text>
+                </View>
+                <View style={[styles.bodyCell, styles.cellReturn]}>
+                  <Text style={[styles.bodyText, styles.alignRight]}>
+                    {formatPct(row.returnPct)}
+                  </Text>
+                </View>
+                <View style={[styles.bodyCell, styles.cellStatus, { alignItems: 'flex-start' }]}>
                   <Text
                     style={[
                       styles.statusPill,
