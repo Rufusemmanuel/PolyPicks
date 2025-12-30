@@ -4,6 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useSession } from '@/lib/useSession';
+import { HistoryExportDom } from '@/components/exports/HistoryExportDom';
+import type {
+  HistoryExportRow,
+  HistoryExportSummary,
+  HistoryStatus as ExportStatus,
+} from '@/components/exports/historyExportTypes';
 
 type HistoryBookmark = {
   id: string;
@@ -56,7 +62,7 @@ const formatPct = (value: number | null) => {
   return `${sign}${Math.abs(value).toFixed(1)}%`;
 };
 
-type HistoryStatus = 'Closed' | 'Removed' | 'Active';
+type HistoryStatus = ExportStatus;
 
 const toHistoryStatus = (
   s: string | null | undefined,
@@ -160,7 +166,8 @@ export default function HistoryPage() {
   const sessionQuery = useSession();
   const user = sessionQuery.data?.user ?? null;
   const router = useRouter();
-  const exportRef = useRef<HTMLDivElement | null>(null);
+  const exportDomRef = useRef<HTMLDivElement | null>(null);
+  const [exportedAt, setExportedAt] = useState<string>(new Date().toISOString());
   const [timeframe, setTimeframe] = useState<(typeof TIMEFRAMES)[number]['value']>(
     'all',
   );
@@ -234,19 +241,55 @@ export default function HistoryPage() {
     };
   }, [rows]);
 
+  const exportRows = useMemo<HistoryExportRow[]>(
+    () =>
+      rows.map((row) => ({
+        id: row.id,
+        title: row.title ?? null,
+        category: row.category ?? null,
+        createdAt: row.createdAt,
+        entryPrice: row.entryPrice,
+        latestPrice: row.latestPrice,
+        profitDelta: row.profitDelta,
+        returnPct: row.returnPct,
+        status: row.status,
+      })),
+    [rows],
+  );
+
+  const exportSummary = useMemo<HistoryExportSummary>(
+    () => ({
+      count: summary.count,
+      winRate: summary.winRate,
+      totalPL: summary.totalPL,
+      best: summary.best
+        ? { title: summary.best.title ?? null, returnPct: summary.best.returnPct ?? null }
+        : null,
+      worst: summary.worst
+        ? { title: summary.worst.title ?? null, returnPct: summary.worst.returnPct ?? null }
+        : null,
+    }),
+    [summary],
+  );
+
   const buildFileName = (ext: 'png' | 'pdf') => {
     const date = new Date().toISOString().slice(0, 10);
     return `polypicks-history-${timeframe}-${date}.${ext}`;
   };
 
   const exportAsPng = async () => {
-    if (!exportRef.current) return;
+    if (!exportDomRef.current) return;
     setIsExporting('png');
     try {
+      const timestamp = new Date().toISOString();
+      setExportedAt(timestamp);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await document.fonts.ready;
       const { toPng } = await import('html-to-image');
-      const dataUrl = await toPng(exportRef.current, {
+      const dataUrl = await toPng(exportDomRef.current, {
         cacheBust: true,
-        backgroundColor: '#0b1224',
+        backgroundColor: '#ffffff',
+        pixelRatio: 3,
       });
       const link = document.createElement('a');
       link.href = dataUrl;
@@ -258,25 +301,27 @@ export default function HistoryPage() {
   };
 
   const exportAsPdf = async () => {
-    if (!exportRef.current) return;
     setIsExporting('pdf');
     try {
-      const { toPng } = await import('html-to-image');
-      const dataUrl = await toPng(exportRef.current, {
-        cacheBust: true,
-        backgroundColor: '#0b1224',
-      });
-      const image = new Image();
-      const imageLoaded = new Promise<{ width: number; height: number }>((resolve) => {
-        image.onload = () => resolve({ width: image.width, height: image.height });
-      });
-      image.src = dataUrl;
-      const { width, height } = await imageLoaded;
-      const { jsPDF } = await import('jspdf');
-      const orientation = width >= height ? 'landscape' : 'portrait';
-      const pdf = new jsPDF({ orientation, unit: 'px', format: [width, height] });
-      pdf.addImage(dataUrl, 'PNG', 0, 0, width, height);
-      pdf.save(buildFileName('pdf'));
+      const [{ pdf }, { HistoryPdf }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('@/components/exports/HistoryPdf'),
+      ]);
+      const timestamp = new Date().toISOString();
+      const instance = pdf(
+        <HistoryPdf
+          rows={exportRows}
+          summary={exportSummary}
+          userName={user?.name ?? null}
+          generatedAt={timestamp}
+        />,
+      );
+      const blob = await instance.toBlob();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = buildFileName('pdf');
+      link.click();
+      URL.revokeObjectURL(link.href);
     } finally {
       setIsExporting(null);
     }
@@ -326,7 +371,7 @@ export default function HistoryPage() {
           </div>
         </div>
 
-        <div ref={exportRef} className="space-y-6">
+        <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-5">
             <div className="rounded-2xl border border-slate-800 bg-[#0f182c] p-4">
               <p className="text-xs uppercase tracking-wide text-slate-400">Trades</p>
@@ -505,6 +550,15 @@ export default function HistoryPage() {
             )}
           </div>
         </div>
+      </div>
+      <div className="fixed left-[-10000px] top-0 z-[-1]">
+        <HistoryExportDom
+          ref={exportDomRef}
+          rows={exportRows}
+          summary={exportSummary}
+          userName={user?.name ?? null}
+          generatedAt={exportedAt}
+        />
       </div>
     </main>
   );
