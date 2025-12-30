@@ -56,11 +56,25 @@ const formatPct = (value: number | null) => {
   return `${sign}${Math.abs(value).toFixed(1)}%`;
 };
 
+type HistoryStatus = 'Closed' | 'Removed' | 'Active';
+
+const toHistoryStatus = (
+  s: string | null | undefined,
+  isClosed?: boolean,
+): HistoryStatus => {
+  const v = (s ?? '').trim().toLowerCase();
+  if (v === 'closed') return 'Closed';
+  if (v === 'removed') return 'Removed';
+  if (v === 'active') return 'Active';
+  if (typeof isClosed === 'boolean') return isClosed ? 'Closed' : 'Active';
+  return 'Active';
+};
+
 type HistoryRow = HistoryBookmark & {
   latestPrice: number | null;
   profitDelta: number | null;
   returnPct: number | null;
-  status: 'Removed' | 'Closed' | 'Active';
+  status: HistoryStatus;
 };
 
 function TradeHistoryMobileCard({ row }: { row: HistoryRow }) {
@@ -100,7 +114,7 @@ function TradeHistoryMobileCard({ row }: { row: HistoryRow }) {
       <div className="mt-3 flex items-center justify-between gap-3 text-xs">
         <span className="text-slate-500">Bookmarked</span>
         <span className="text-slate-200">
-          {new Date(row.createdAt).toLocaleDateString()} ·{' '}
+          {new Date(row.createdAt).toLocaleDateString()} -{' '}
           <span className="text-slate-400">
             {new Date(row.createdAt).toLocaleTimeString()}
           </span>
@@ -166,7 +180,7 @@ export default function HistoryPage() {
     staleTime: 1000 * 30,
   });
 
-  const rows = useMemo(() => {
+  const rows: HistoryRow[] = useMemo(() => {
     const bookmarks = historyQuery.data?.bookmarks ?? [];
     return bookmarks.map((bookmark) => {
       const latestPrice =
@@ -179,11 +193,10 @@ export default function HistoryPage() {
         profitDelta != null && bookmark.entryPrice > 0
           ? (profitDelta / bookmark.entryPrice) * 100
           : null;
-      const status = bookmark.removedAt
-        ? 'Removed'
-        : bookmark.isClosed
-          ? 'Closed'
-          : 'Active';
+      const status = toHistoryStatus(
+        bookmark.removedAt ? 'Removed' : bookmark.isClosed ? 'Closed' : 'Active',
+        bookmark.isClosed,
+      );
       return {
         ...bookmark,
         latestPrice,

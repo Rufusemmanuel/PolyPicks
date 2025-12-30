@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
-    "vercel-build": "node -e \"console.log('DIRECT_URL set:', Boolean(process.env.DIRECT_URL))\" && prisma generate && PRISMA_MIGRATE_ADVISORY_LOCK_TIMEOUT=120000 prisma migrate deploy && next build",
+    "vercel-build": "node -e \"console.log('DIRECT_URL set:', Boolean(process.env.DIRECT_URL))\" && prisma generate && cross-env PRISMA_MIGRATE_ADVISORY_LOCK_TIMEOUT=120000 prisma migrate deploy && next build",
     "start": "next start",
     "lint": "next lint",
     "test:category": "tsc -p tsconfig.category-test.json && node .tmp-category-test/scripts/category-harness.js",
@@ -39,6 +39,7 @@
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
     "autoprefixer": "10.4.20",
+    "cross-env": "^10.1.0",
     "eslint": "8.57.1",
     "eslint-config-next": "14.2.7",
     "postcss": "8.4.49",
