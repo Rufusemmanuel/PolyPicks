@@ -3,6 +3,7 @@ export const revalidate = 0;
 export const runtime = 'nodejs';
 
 import { NextResponse, type NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getUserFromRequest } from '@/lib/auth';
 import { getMarketDetails } from '@/lib/polymarket/api';
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
     );
 
     const now = new Date();
-    const updates = [];
+    const updates: Prisma.PrismaPromise<unknown>[] = [];
 
     const response = bookmarks.map((bookmark) => {
       const market = marketMap.get(bookmark.marketId) ?? null;
