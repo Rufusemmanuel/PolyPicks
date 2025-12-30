@@ -17,6 +17,12 @@ type Props = {
   generatedAt: string;
 };
 
+const truncate = (s: string, max = 64) => {
+  const str = (s ?? '').trim();
+  if (str.length <= max) return str;
+  return `${str.slice(0, max - 1).trimEnd()}…`;
+};
+
 const styles = StyleSheet.create({
   page: {
     paddingTop: 36,
@@ -251,18 +257,10 @@ export function HistoryPdf({ rows, summary, userName, generatedAt }: Props) {
             const statusStyle = statusColors[row.status];
             return (
               <View key={row.id} style={[styles.tableRow, { backgroundColor: stripe }]}>
-                <Text
-                  style={[styles.bodyText, styles.cellMarket]}
-                  maxLines={2}
-                  ellipsizeMode="tail"
-                >
-                  {row.title ?? 'Unknown market'}
+                <Text style={[styles.bodyText, styles.cellMarket]}>
+                  {truncate(row.title ?? 'Unknown market', 72)}
                 </Text>
-                <Text
-                  style={[styles.bodyTextMuted, styles.cellCategory]}
-                  maxLines={2}
-                  ellipsizeMode="tail"
-                >
+                <Text style={[styles.bodyTextMuted, styles.cellCategory]}>
                   {row.category ?? 'Unknown'}
                 </Text>
                 <View style={styles.cellBookmarked}>
