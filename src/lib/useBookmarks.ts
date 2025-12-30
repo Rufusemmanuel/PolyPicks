@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 type BookmarkRecord = {
   marketId: string;
   createdAt: string;
-  initialPrice: number | null;
+  entryPrice: number;
   title: string | null;
   category: string | null;
   marketUrl: string | null;

@@ -70,8 +70,13 @@ model Bookmark {
   title     String?
   category  String?
   marketUrl String?
-  initialPrice Float?
+  entryPrice Float
   createdAt DateTime @default(now())
+  removedAt DateTime?
+  lastKnownPrice Float?
+  lastPriceAt DateTime?
+  finalPrice Float?
+  closedAt DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

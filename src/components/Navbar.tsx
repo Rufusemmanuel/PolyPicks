@@ -248,6 +248,13 @@ export function Navbar() {
                     >
                       Trades
                     </Link>
+                    <Link
+                      href="/history"
+                      className="block rounded-lg px-3 py-2 text-slate-200 hover:bg-slate-800"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      History
+                    </Link>
                     <button
                       type="button"
                       onClick={handleLogout}

@@ -265,7 +265,7 @@ function MarketsSection({
   const [isSignUpOpen, setIsSignUpOpen] = useState(false);
   const [pendingBookmark, setPendingBookmark] = useState<{
     marketId: string;
-    initialPrice: number;
+    entryPrice: number;
     title: string;
     category: string;
     marketUrl: string;
@@ -280,14 +280,14 @@ function MarketsSection({
     mutationFn: async ({
       marketId,
       isBookmarked,
-      initialPrice,
+      entryPrice,
       title,
       category,
       marketUrl,
     }: {
       marketId: string;
       isBookmarked: boolean;
-      initialPrice: number;
+      entryPrice: number;
       title: string;
       category: string;
       marketUrl: string;
@@ -299,19 +299,19 @@ function MarketsSection({
           headers: isBookmarked ? undefined : { 'Content-Type': 'application/json' },
           body: isBookmarked
             ? undefined
-            : JSON.stringify({ marketId, initialPrice, title, category, marketUrl }),
+            : JSON.stringify({ marketId, entryPrice, title, category, marketUrl }),
         },
       );
       if (!res.ok) throw new Error('Unable to update bookmark');
       return res.json();
     },
-    onMutate: async ({ marketId, isBookmarked, initialPrice, title, category, marketUrl }) => {
+    onMutate: async ({ marketId, isBookmarked, entryPrice, title, category, marketUrl }) => {
       await queryClient.cancelQueries({ queryKey: ['bookmarks'] });
       const previous = queryClient.getQueryData<{
         bookmarks: {
           marketId: string;
           createdAt: string;
-          initialPrice: number | null;
+          entryPrice: number;
           title: string | null;
           category: string | null;
           marketUrl: string | null;
@@ -325,7 +325,7 @@ function MarketsSection({
             {
               marketId,
               createdAt: new Date().toISOString(),
-              initialPrice,
+              entryPrice,
               title,
               category,
               marketUrl,
@@ -346,7 +346,7 @@ function MarketsSection({
 
   const handleToggleBookmark = (data: {
     marketId: string;
-    initialPrice: number;
+    entryPrice: number;
     title: string;
     category: string;
     marketUrl: string;
@@ -369,7 +369,7 @@ function MarketsSection({
       toggleBookmark.mutate({
         marketId: pendingBookmark.marketId,
         isBookmarked: false,
-        initialPrice: pendingBookmark.initialPrice,
+        entryPrice: pendingBookmark.entryPrice,
         title: pendingBookmark.title,
         category: pendingBookmark.category,
         marketUrl: pendingBookmark.marketUrl,

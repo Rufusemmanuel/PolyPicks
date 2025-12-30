@@ -26,7 +26,7 @@ export default function TradeClient() {
   const [selectedAnalytics, setSelectedAnalytics] = useState<{
     marketId: string;
     bookmarkedAt: string;
-    initialPrice: number | null;
+    entryPrice: number;
     initialTab?: 'analytics' | 'alerts';
   } | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -114,7 +114,7 @@ export default function TradeClient() {
     setSelectedAnalytics({
       marketId,
       bookmarkedAt: bookmark.createdAt,
-      initialPrice: bookmark.initialPrice,
+      entryPrice: bookmark.entryPrice,
       initialTab: tab === 'alerts' ? 'alerts' : 'analytics',
     });
     router.replace(asRoute('/trade'), { scroll: false });
@@ -177,7 +177,7 @@ export default function TradeClient() {
                             setSelectedAnalytics({
                               marketId: bookmark.marketId,
                               bookmarkedAt: bookmark.createdAt,
-                              initialPrice: bookmark.initialPrice,
+                              entryPrice: bookmark.entryPrice,
                               initialTab: 'alerts',
                             })
                           }
@@ -211,7 +211,7 @@ export default function TradeClient() {
                         setSelectedAnalytics({
                           marketId: bookmark.marketId,
                           bookmarkedAt: bookmark.createdAt,
-                          initialPrice: bookmark.initialPrice,
+                          entryPrice: bookmark.entryPrice,
                         })
                       }
                       className="inline-flex h-10 min-w-[130px] items-center justify-center whitespace-nowrap rounded-full border border-slate-700 px-4 text-xs font-semibold text-slate-200 transition hover:border-slate-400"
@@ -253,7 +253,7 @@ export default function TradeClient() {
           market={marketMap.get(selectedAnalytics.marketId)}
           marketId={selectedAnalytics.marketId}
           bookmarkedAt={selectedAnalytics.bookmarkedAt}
-          initialPrice={selectedAnalytics.initialPrice}
+          entryPrice={selectedAnalytics.entryPrice}
           alertsQuery={alertsQuery}
           initialTab={selectedAnalytics.initialTab}
           onClose={() => setSelectedAnalytics(null)}
@@ -267,7 +267,7 @@ function AnalyticsModal({
   market,
   marketId,
   bookmarkedAt,
-  initialPrice,
+  entryPrice,
   initialTab,
   alertsQuery,
   onClose,
@@ -275,7 +275,7 @@ function AnalyticsModal({
   market?: MarketWithStrings;
   marketId: string;
   bookmarkedAt: string;
-  initialPrice: number | null;
+  entryPrice: number;
   initialTab?: 'analytics' | 'alerts';
   alertsQuery: ReturnType<typeof useAlerts>;
   onClose: () => void;
@@ -287,7 +287,7 @@ function AnalyticsModal({
     category: string;
   } | null>(null);
   const bookmarkedDate = new Date(bookmarkedAt);
-  const initial = initialPrice ?? null;
+  const initial = Number.isFinite(entryPrice) ? entryPrice : null;
 
   useEffect(() => {
     if (market) return;

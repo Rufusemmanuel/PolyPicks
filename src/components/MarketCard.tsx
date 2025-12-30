@@ -14,7 +14,7 @@ type Props = {
   isBookmarked?: boolean;
   onToggleBookmark?: (data: {
     marketId: string;
-    initialPrice: number;
+    entryPrice: number;
     title: string;
     category: string;
     marketUrl: string;
@@ -92,7 +92,7 @@ export function MarketCard({
               onClick={() =>
                 onToggleBookmark?.({
                   marketId: market.id,
-                  initialPrice: market.price.price,
+                  entryPrice: market.price.price,
                   title: market.title,
                   category: market.category ?? 'Unknown',
                   marketUrl: market.url,

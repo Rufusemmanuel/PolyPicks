@@ -114,6 +114,23 @@ export type HistoryEntryDto = {
   marketUrl: string;
 };
 
+export type BookmarkHistoryDto = {
+  id: string;
+  marketId: string;
+  title?: string | null;
+  category?: string | null;
+  marketUrl?: string | null;
+  entryPrice: number;
+  createdAt: string;
+  removedAt?: string | null;
+  lastKnownPrice?: number | null;
+  lastPriceAt?: string | null;
+  finalPrice?: number | null;
+  closedAt?: string | null;
+  currentPrice?: number | null;
+  isClosed: boolean;
+};
+
 export type MarketDetailsResponse = {
   id: string;
   title: string;

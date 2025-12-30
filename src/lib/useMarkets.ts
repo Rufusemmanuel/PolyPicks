@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { subscribeToMarketsBrowser } from './polymarket/realtime-browser';
-import type { HistoryEntryDto, MarketSummary } from './polymarket/types';
+import type { BookmarkHistoryDto, MarketSummary } from './polymarket/types';
 
 type MarketWithStrings = Omit<MarketSummary, 'endDate' | 'closedTime'> & {
   endDate: string;
@@ -68,13 +68,13 @@ export const useMarkets = () => {
   return query;
 };
 
-type HistoryResponse = { history: HistoryEntryDto[]; total: number };
+type HistoryResponse = { bookmarks: BookmarkHistoryDto[]; total: number };
 
-export const useHistory = () =>
+export const useHistory = (timeframe: string = 'all') =>
   useQuery<HistoryResponse>({
-    queryKey: ['history'],
+    queryKey: ['history', timeframe],
     queryFn: async () => {
-      const res = await fetch('/api/history');
+      const res = await fetch(`/api/history?timeframe=${encodeURIComponent(timeframe)}`);
       if (!res.ok) throw new Error('Unable to load history');
       return (await res.json()) as HistoryResponse;
     },

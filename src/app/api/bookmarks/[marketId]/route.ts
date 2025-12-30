@@ -20,8 +20,9 @@ export async function DELETE(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: 'marketId is required' }, { status: 400 });
     }
 
-    await prisma.bookmark.deleteMany({
-      where: { userId: user.id, marketId },
+    await prisma.bookmark.updateMany({
+      where: { userId: user.id, marketId, removedAt: null },
+      data: { removedAt: new Date() },
     });
 
     return NextResponse.json({ ok: true });

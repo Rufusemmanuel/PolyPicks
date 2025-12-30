@@ -172,15 +172,15 @@ export async function POST(request: NextRequest) {
 
     const bookmark = await prisma.bookmark.findUnique({
       where: { userId_marketId: { userId: user.id, marketId } },
-      select: { initialPrice: true },
+      select: { entryPrice: true },
     });
-    if (!bookmark?.initialPrice || bookmark.initialPrice <= 0) {
+    if (!bookmark?.entryPrice || bookmark.entryPrice <= 0) {
       return NextResponse.json(
         { error: 'Bookmark not found for this market' },
         { status: 404 },
       );
     }
-    const resolvedEntryPrice = bookmark.initialPrice * 100;
+    const resolvedEntryPrice = bookmark.entryPrice * 100;
 
     const existing = await prisma.alert.findUnique({
       where: { userId_marketId: { userId: user.id, marketId } },

@@ -4,7 +4,7 @@ import { getUserFromRequest } from '@/lib/auth';
 
 type BookmarkPayload = {
   marketId?: string;
-  initialPrice?: number;
+  entryPrice?: number;
   title?: string;
   category?: string;
   marketUrl?: string;
@@ -22,11 +22,11 @@ export async function GET(request: NextRequest) {
     }
 
     const bookmarks = await prisma.bookmark.findMany({
-      where: { userId: user.id },
+      where: { userId: user.id, removedAt: null },
       select: {
         marketId: true,
         createdAt: true,
-        initialPrice: true,
+        entryPrice: true,
         title: true,
         category: true,
         marketUrl: true,
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
       bookmarks: bookmarks.map((b) => ({
         marketId: b.marketId,
         createdAt: b.createdAt.toISOString(),
-        initialPrice: b.initialPrice,
+        entryPrice: b.entryPrice,
         title: b.title,
         category: b.category,
         marketUrl: b.marketUrl,
@@ -63,9 +63,9 @@ export async function POST(request: NextRequest) {
 
     const body = (await request.json()) as BookmarkPayload;
     const marketId = body.marketId?.trim();
-    const initialPrice =
-      typeof body.initialPrice === 'number' && Number.isFinite(body.initialPrice)
-        ? body.initialPrice
+    const entryPrice =
+      typeof body.entryPrice === 'number' && Number.isFinite(body.entryPrice)
+        ? body.entryPrice
         : null;
     const title = body.title?.trim() || null;
     const category = body.category?.trim() || null;
@@ -73,9 +73,14 @@ export async function POST(request: NextRequest) {
     if (!marketId) {
       return NextResponse.json({ error: 'marketId is required' }, { status: 400 });
     }
+    if (entryPrice == null) {
+      return NextResponse.json({ error: 'entryPrice is required' }, { status: 400 });
+    }
 
     const updateData = {
-      ...(initialPrice != null ? { initialPrice } : {}),
+      entryPrice,
+      createdAt: new Date(),
+      removedAt: null,
       ...(title ? { title } : {}),
       ...(category ? { category } : {}),
       ...(marketUrl ? { marketUrl } : {}),
@@ -90,7 +95,7 @@ export async function POST(request: NextRequest) {
       create: {
         userId: user.id,
         marketId,
-        ...(initialPrice != null ? { initialPrice } : {}),
+        entryPrice,
         ...(title ? { title } : {}),
         ...(category ? { category } : {}),
         ...(marketUrl ? { marketUrl } : {}),
