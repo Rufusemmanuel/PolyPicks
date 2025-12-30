@@ -19,9 +19,11 @@ type Props = {
 
 const styles = StyleSheet.create({
   page: {
-    padding: 36,
+    paddingTop: 36,
+    paddingBottom: 42,
+    paddingHorizontal: 36,
     fontSize: 10,
-    color: '#0f172a',
+    color: EXPORT_BRAND.text,
     fontFamily: 'Helvetica',
     backgroundColor: 'white',
   },
@@ -29,105 +31,137 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 18,
+    marginBottom: 10,
   },
   title: {
-    fontSize: 20,
+    fontSize: 28,
     fontWeight: 700,
+    color: EXPORT_BRAND.text,
   },
   subtitle: {
     marginTop: 4,
-    color: '#64748b',
+    color: EXPORT_BRAND.textMuted,
+    fontSize: 11,
   },
   badge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: EXPORT_BRAND.primary,
     color: 'white',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: 700,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: EXPORT_BRAND.border,
+    marginBottom: 12,
   },
   summaryRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 8,
+  },
+  summaryRowSplit: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
   },
   summaryCard: {
     flexGrow: 1,
     border: `1px solid ${EXPORT_BRAND.border}`,
     borderRadius: 8,
-    backgroundColor: EXPORT_BRAND.stripe,
-    padding: 8,
+    backgroundColor: 'white',
+    padding: 12,
   },
   summaryLabel: {
-    fontSize: 8,
+    fontSize: 9,
     textTransform: 'uppercase',
-    letterSpacing: 1,
-    color: '#64748b',
+    letterSpacing: 1.2,
+    color: EXPORT_BRAND.textMuted,
   },
   summaryValue: {
     marginTop: 4,
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: 700,
+  },
+  summaryValueAccent: {
+    color: EXPORT_BRAND.accent,
+  },
+  summarySubtle: {
+    marginTop: 2,
+    fontSize: 9,
+    color: EXPORT_BRAND.textMuted,
   },
   table: {
     border: `1px solid ${EXPORT_BRAND.border}`,
     borderRadius: 8,
     overflow: 'hidden',
+    paddingTop: 18,
   },
   tableHeader: {
     flexDirection: 'row',
     backgroundColor: EXPORT_BRAND.primary,
     color: 'white',
     paddingVertical: 6,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
   },
   tableRow: {
     flexDirection: 'row',
-    paddingVertical: 6,
-    paddingHorizontal: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
     borderBottom: `1px solid ${EXPORT_BRAND.border}`,
+    minHeight: 32,
   },
-  cellMarket: { width: '22%' },
-  cellCategory: { width: '12%' },
-  cellBookmarked: { width: '14%' },
-  cellEntry: { width: '9%' },
-  cellFinal: { width: '12%' },
-  cellPL: { width: '9%' },
-  cellReturn: { width: '9%' },
-  cellStatus: { width: '13%' },
+  cellMarket: { width: '35%' },
+  cellCategory: { width: '10%' },
+  cellBookmarked: { width: '16%' },
+  cellEntry: { width: '8%' },
+  cellFinal: { width: '10%' },
+  cellPL: { width: '8%' },
+  cellReturn: { width: '8%' },
+  cellStatus: { width: '8%' },
   headerText: {
-    fontSize: 9,
-    fontWeight: 700,
+    fontSize: 10,
+    fontWeight: 600,
   },
   bodyText: {
-    fontSize: 9,
+    fontSize: 10,
     color: '#334155',
+  },
+  bodyTextMuted: {
+    fontSize: 9,
+    color: '#64748b',
+  },
+  alignRight: {
+    textAlign: 'right',
   },
   statusPill: {
     paddingVertical: 2,
     paddingHorizontal: 6,
-    borderRadius: 12,
+    borderRadius: 10,
     fontSize: 8,
     fontWeight: 700,
     alignSelf: 'flex-start',
   },
   footer: {
-    marginTop: 16,
+    marginTop: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     color: '#94a3b8',
     fontSize: 8,
   },
+  footerRight: {
+    textAlign: 'right',
+  },
 });
 
 const statusColors: Record<HistoryExportRow['status'], { bg: string; text: string }> = {
-  Closed: { bg: '#dcfce7', text: '#166534' },
-  Removed: { bg: '#fee2e2', text: '#991b1b' },
-  Active: { bg: '#dbeafe', text: '#1e40af' },
+  Closed: { bg: '#effaf3', text: '#166534' },
+  Removed: { bg: '#fef2f2', text: '#991b1b' },
+  Active: { bg: '#eff6ff', text: '#1e40af' },
 };
 
 export function HistoryPdf({ rows, summary, userName, generatedAt }: Props) {
@@ -136,12 +170,12 @@ export function HistoryPdf({ rows, summary, userName, generatedAt }: Props) {
       <Page size="A4" style={styles.page} wrap>
         <View style={styles.header}>
           <View>
-            <Text style={{ letterSpacing: 2, fontSize: 9, color: '#64748b' }}>
+            <Text style={{ letterSpacing: 2, fontSize: 9, color: EXPORT_BRAND.textMuted }}>
               POLYPICKS
             </Text>
             <Text style={styles.title}>Trade History</Text>
             <Text style={styles.subtitle}>
-              {userName ? `${userName} · ` : ''}
+              {userName ? `${userName} - ` : ''}
               {formatTimestamp(generatedAt)}
             </Text>
           </View>
@@ -149,6 +183,7 @@ export function HistoryPdf({ rows, summary, userName, generatedAt }: Props) {
             <Text>PP</Text>
           </View>
         </View>
+        <View style={styles.divider} />
 
         <View style={styles.summaryRow}>
           <View style={styles.summaryCard}>
@@ -163,28 +198,51 @@ export function HistoryPdf({ rows, summary, userName, generatedAt }: Props) {
           </View>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>Total P/L</Text>
-            <Text style={styles.summaryValue}>{formatSignedCents(summary.totalPL)}</Text>
+            <Text style={[styles.summaryValue, styles.summaryValueAccent]}>
+              {formatSignedCents(summary.totalPL)}
+            </Text>
           </View>
+        </View>
+        <View style={styles.summaryRowSplit}>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryLabel}>Best / Worst</Text>
-            <Text style={{ marginTop: 4, fontSize: 9, fontWeight: 700 }}>
+            <Text style={styles.summaryLabel}>Best trade</Text>
+            <Text style={[styles.summaryValue, { fontSize: 12 }]}>
               {summary.best?.title ?? 'N/A'}
             </Text>
-            <Text style={{ fontSize: 8, color: '#64748b' }}>
+            <Text style={styles.summarySubtle}>
+              {summary.best?.returnPct != null
+                ? formatPct(summary.best.returnPct)
+                : 'N/A'}
+            </Text>
+          </View>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>Worst trade</Text>
+            <Text style={[styles.summaryValue, { fontSize: 12 }]}>
               {summary.worst?.title ?? 'N/A'}
+            </Text>
+            <Text style={styles.summarySubtle}>
+              {summary.worst?.returnPct != null
+                ? formatPct(summary.worst.returnPct)
+                : 'N/A'}
             </Text>
           </View>
         </View>
 
         <View style={styles.table}>
-          <View style={styles.tableHeader}>
+          <View style={styles.tableHeader} fixed>
             <Text style={[styles.headerText, styles.cellMarket]}>Market</Text>
             <Text style={[styles.headerText, styles.cellCategory]}>Category</Text>
             <Text style={[styles.headerText, styles.cellBookmarked]}>Bookmarked</Text>
-            <Text style={[styles.headerText, styles.cellEntry]}>Entry</Text>
-            <Text style={[styles.headerText, styles.cellFinal]}>Final/Current</Text>
-            <Text style={[styles.headerText, styles.cellPL]}>P/L</Text>
-            <Text style={[styles.headerText, styles.cellReturn]}>Return</Text>
+            <Text style={[styles.headerText, styles.cellEntry, styles.alignRight]}>
+              Entry
+            </Text>
+            <Text style={[styles.headerText, styles.cellFinal, styles.alignRight]}>
+              Final/Current
+            </Text>
+            <Text style={[styles.headerText, styles.cellPL, styles.alignRight]}>P/L</Text>
+            <Text style={[styles.headerText, styles.cellReturn, styles.alignRight]}>
+              Return
+            </Text>
             <Text style={[styles.headerText, styles.cellStatus]}>Status</Text>
           </View>
 
@@ -193,31 +251,37 @@ export function HistoryPdf({ rows, summary, userName, generatedAt }: Props) {
             const statusStyle = statusColors[row.status];
             return (
               <View key={row.id} style={[styles.tableRow, { backgroundColor: stripe }]}>
-                <Text style={[styles.bodyText, styles.cellMarket]}>
+                <Text
+                  style={[styles.bodyText, styles.cellMarket]}
+                  maxLines={2}
+                  ellipsizeMode="tail"
+                >
                   {row.title ?? 'Unknown market'}
                 </Text>
-                <Text style={[styles.bodyText, styles.cellCategory]}>
+                <Text
+                  style={[styles.bodyTextMuted, styles.cellCategory]}
+                  maxLines={2}
+                  ellipsizeMode="tail"
+                >
                   {row.category ?? 'Unknown'}
                 </Text>
                 <View style={styles.cellBookmarked}>
                   <Text style={styles.bodyText}>{formatDate(row.createdAt)}</Text>
-                  <Text style={{ fontSize: 8, color: '#94a3b8' }}>
-                    {formatTime(row.createdAt)}
-                  </Text>
+                  <Text style={styles.bodyTextMuted}>{formatTime(row.createdAt)}</Text>
                 </View>
-                <Text style={[styles.bodyText, styles.cellEntry]}>
+                <Text style={[styles.bodyText, styles.cellEntry, styles.alignRight]}>
                   {formatPrice(row.entryPrice)}
                 </Text>
-                <Text style={[styles.bodyText, styles.cellFinal]}>
+                <Text style={[styles.bodyText, styles.cellFinal, styles.alignRight]}>
                   {formatPrice(row.latestPrice)}
                 </Text>
-                <Text style={[styles.bodyText, styles.cellPL]}>
+                <Text style={[styles.bodyText, styles.cellPL, styles.alignRight]}>
                   {formatSignedCents(row.profitDelta)}
                 </Text>
-                <Text style={[styles.bodyText, styles.cellReturn]}>
+                <Text style={[styles.bodyText, styles.cellReturn, styles.alignRight]}>
                   {formatPct(row.returnPct)}
                 </Text>
-                <View style={styles.cellStatus}>
+                <View style={[styles.cellStatus, { alignItems: 'flex-start' }]}>
                   <Text
                     style={[
                       styles.statusPill,
@@ -234,7 +298,12 @@ export function HistoryPdf({ rows, summary, userName, generatedAt }: Props) {
 
         <View style={styles.footer} fixed>
           <Text>Generated by PolyPicks</Text>
-          <Text>polypicks.app</Text>
+          <Text
+            style={styles.footerRight}
+            render={({ pageNumber, totalPages }) =>
+              `polypicks.app - Page ${pageNumber} of ${totalPages}`
+            }
+          />
         </View>
       </Page>
     </Document>
