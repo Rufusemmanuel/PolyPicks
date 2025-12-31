@@ -2,7 +2,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Footer } from '@/components/Footer';
 import { useMarkets } from '@/lib/useMarkets';
@@ -13,6 +13,7 @@ import { SignUpModal } from '@/components/SignUpModal';
 import type { MarketSummary } from '@/lib/polymarket/types';
 import { useSession } from '@/lib/useSession';
 import { useBookmarks } from '@/lib/useBookmarks';
+import { useTheme } from '@/components/theme-context';
 
 type MarketWithStrings = Omit<MarketSummary, 'endDate' | 'closedTime'> & {
   endDate: string;
@@ -122,15 +123,7 @@ function PageContent() {
     () => (marketsQuery.data?.window24?.length ?? 0) + (marketsQuery.data?.window48?.length ?? 0),
     [marketsQuery.data?.window24, marketsQuery.data?.window48],
   );
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
-
-  useEffect(() => {
-    document.body.dataset.theme = theme;
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.style.colorScheme = theme === 'dark' ? 'dark' : 'light';
-  }, [theme]);
-
-  const isDark = theme === 'dark';
+  const { isDark } = useTheme();
 
   return (
     <>
@@ -138,8 +131,7 @@ function PageContent() {
         <Hero
           liveMarketsTotal={liveMarketsTotal}
           isLoading={marketsQuery.isLoading}
-          theme={theme}
-          onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+          isDark={isDark}
         />
         <MarketsSection marketsQuery={marketsQuery} isDark={isDark} />
         <HistorySection isDark={isDark} />
@@ -153,15 +145,12 @@ function PageContent() {
 function Hero({
   liveMarketsTotal,
   isLoading,
-  theme,
-  onToggleTheme,
+  isDark,
 }: {
   liveMarketsTotal: number;
   isLoading: boolean;
-  theme: 'light' | 'dark';
-  onToggleTheme: () => void;
+  isDark: boolean;
 }) {
-  const isDark = theme === 'dark';
 
   return (
     <section
@@ -179,37 +168,10 @@ function Hero({
           </h1>
         </div>
         <div className="flex flex-col items-end gap-3">
-          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           <LiveMarketsOrb liveMarketsTotal={liveMarketsTotal} isLoading={isLoading} />
         </div>
       </div>
     </section>
-  );
-}
-
-function ThemeToggle({
-  theme,
-  onToggle,
-}: {
-  theme: 'light' | 'dark';
-  onToggle: () => void;
-}) {
-  const isDark = theme === 'dark';
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold shadow-sm transition ${
-        isDark
-          ? 'border-slate-600 bg-[#0f1a32]/80 text-slate-100 shadow-slate-900/50 hover:border-slate-400 hover:text-white'
-          : 'border-slate-300 bg-white text-slate-800 shadow-slate-200 hover:border-slate-500 hover:text-slate-900'
-      }`}
-    >
-      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#002cff] text-[10px] text-white">
-        {isDark ? '☾' : '☀'}
-      </span>
-      <span>{isDark ? 'Dark' : 'Light'} mode</span>
-    </button>
   );
 }
 

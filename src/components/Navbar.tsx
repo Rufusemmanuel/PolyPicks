@@ -9,6 +9,8 @@ import { useSession } from '@/lib/useSession';
 import { useNotifications } from '@/lib/useNotifications';
 import { SignUpModal } from '@/components/SignUpModal';
 import { LoginModal } from '@/components/LoginModal';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { useTheme } from '@/components/theme-context';
 
 const navItems = [
   { label: 'Markets', href: '/' as const, kind: 'link' as const },
@@ -16,6 +18,7 @@ const navItems = [
 ];
 
 export function Navbar() {
+  const { isDark } = useTheme();
   const sessionQuery = useSession();
   const queryClient = useQueryClient();
   const user = sessionQuery.data?.user ?? null;
@@ -103,7 +106,11 @@ export function Navbar() {
   };
 
   return (
-    <header className="border-b border-slate-800 bg-[#0b1224] text-slate-100">
+    <header
+      className={`border-b ${
+        isDark ? 'border-slate-800 bg-[#0b1224] text-slate-100' : 'border-slate-200 bg-white text-slate-900'
+      }`}
+    >
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
         <Link href="/" className="flex items-center gap-3">
           <Image src="/polypicks.png" alt="PolyPicks logo" width={32} height={32} />
@@ -115,7 +122,7 @@ export function Navbar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className="text-slate-300 hover:text-white"
+                className={isDark ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900'}
               >
                 {item.label}
               </Link>
@@ -123,7 +130,7 @@ export function Navbar() {
               <a
                 key={item.href}
                 href={item.href}
-                className="text-slate-300 hover:text-white"
+                className={isDark ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900'}
               >
                 {item.label}
               </a>
@@ -131,12 +138,17 @@ export function Navbar() {
           )}
         </nav>
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           {!user && (
             <>
               <button
                 type="button"
                 onClick={() => setIsLoginOpen(true)}
-                className="rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-400"
+                className={`rounded-full border px-4 py-1.5 text-xs font-semibold transition ${
+                  isDark
+                    ? 'border-slate-700 text-slate-200 hover:border-slate-400'
+                    : 'border-slate-300 text-slate-700 hover:border-slate-400'
+                }`}
               >
                 Log in
               </button>
@@ -158,7 +170,11 @@ export function Navbar() {
                     setIsNotificationsOpen((open) => !open);
                     setIsMenuOpen(false);
                   }}
-                  className="relative flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 text-slate-200 transition hover:border-slate-400"
+                  className={`relative flex h-9 w-9 items-center justify-center rounded-full border transition ${
+                    isDark
+                      ? 'border-slate-700 text-slate-200 hover:border-slate-400'
+                      : 'border-slate-300 text-slate-700 hover:border-slate-400'
+                  }`}
                   aria-label="Notifications"
                 >
                   <svg
@@ -187,8 +203,16 @@ export function Navbar() {
                   )}
                 </button>
                 {isNotificationsOpen && (
-                  <div className="absolute right-0 z-50 mt-2 w-72 rounded-xl border border-slate-800 bg-[#0f182c] p-2 text-sm shadow-xl">
-                    <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <div
+                    className={`absolute right-0 z-50 mt-2 w-72 rounded-xl border p-2 text-sm shadow-xl ${
+                      isDark ? 'border-slate-800 bg-[#0f182c]' : 'border-slate-200 bg-white'
+                    }`}
+                  >
+                    <p
+                      className={`px-3 py-2 text-xs font-semibold uppercase tracking-wide ${
+                        isDark ? 'text-slate-400' : 'text-slate-500'
+                      }`}
+                    >
                       Alerts
                     </p>
                     <div className="max-h-72 space-y-1 overflow-y-auto pb-1">
@@ -197,20 +221,40 @@ export function Navbar() {
                           <div
                             key={note.id}
                             className={`rounded-lg px-3 py-2 ${
-                              note.readAt ? 'text-slate-300' : 'text-slate-100'
+                              note.readAt
+                                ? isDark
+                                  ? 'text-slate-300'
+                                  : 'text-slate-600'
+                                : isDark
+                                  ? 'text-slate-100'
+                                  : 'text-slate-900'
                             }`}
                           >
                             <p className="text-sm font-semibold">{note.title}</p>
                             {note.body && (
-                              <p className="text-xs text-slate-400">{note.body}</p>
+                              <p
+                                className={`text-xs ${
+                                  isDark ? 'text-slate-400' : 'text-slate-500'
+                                }`}
+                              >
+                                {note.body}
+                              </p>
                             )}
-                            <p className="text-[11px] text-slate-500">
+                            <p
+                              className={`text-[11px] ${
+                                isDark ? 'text-slate-500' : 'text-slate-400'
+                              }`}
+                            >
                               {new Date(note.createdAt).toLocaleString()}
                             </p>
                           </div>
                         ))
                       ) : (
-                        <p className="px-3 py-3 text-xs text-slate-400">
+                        <p
+                          className={`px-3 py-3 text-xs ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
+                          }`}
+                        >
                           No notifications yet.
                         </p>
                       )}
@@ -225,7 +269,11 @@ export function Navbar() {
                     setIsMenuOpen((open) => !open);
                     setIsNotificationsOpen(false);
                   }}
-                  className="flex items-center gap-2 rounded-full border border-slate-700 px-2 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-400"
+                  className={`flex items-center gap-2 rounded-full border px-2 py-1.5 text-xs font-semibold transition ${
+                    isDark
+                      ? 'border-slate-700 text-slate-200 hover:border-slate-400'
+                      : 'border-slate-300 text-slate-700 hover:border-slate-400'
+                  }`}
                 >
                   <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#002cff] text-[11px] text-white">
                     {initials}
@@ -233,24 +281,40 @@ export function Navbar() {
                   <span className="hidden sm:inline">{user.name}</span>
                 </button>
                 {isMenuOpen && (
-                  <div className="absolute right-0 z-50 mt-2 w-40 rounded-xl border border-slate-800 bg-[#0f182c] p-2 text-sm shadow-xl">
+                  <div
+                    className={`absolute right-0 z-50 mt-2 w-40 rounded-xl border p-2 text-sm shadow-xl ${
+                      isDark ? 'border-slate-800 bg-[#0f182c]' : 'border-slate-200 bg-white'
+                    }`}
+                  >
                     <Link
                       href="/profile"
-                      className="block rounded-lg px-3 py-2 text-slate-200 hover:bg-slate-800"
+                      className={`block rounded-lg px-3 py-2 ${
+                        isDark
+                          ? 'text-slate-200 hover:bg-slate-800'
+                          : 'text-slate-700 hover:bg-slate-100'
+                      }`}
                       onClick={() => setIsMenuOpen(false)}
                     >
                       Profile
                     </Link>
                     <Link
                       href="/trade"
-                      className="block rounded-lg px-3 py-2 text-slate-200 hover:bg-slate-800"
+                      className={`block rounded-lg px-3 py-2 ${
+                        isDark
+                          ? 'text-slate-200 hover:bg-slate-800'
+                          : 'text-slate-700 hover:bg-slate-100'
+                      }`}
                       onClick={() => setIsMenuOpen(false)}
                     >
                       Trades
                     </Link>
                     <Link
                       href="/history"
-                      className="block rounded-lg px-3 py-2 text-slate-200 hover:bg-slate-800"
+                      className={`block rounded-lg px-3 py-2 ${
+                        isDark
+                          ? 'text-slate-200 hover:bg-slate-800'
+                          : 'text-slate-700 hover:bg-slate-100'
+                      }`}
                       onClick={() => setIsMenuOpen(false)}
                     >
                       History
@@ -258,7 +322,11 @@ export function Navbar() {
                     <button
                       type="button"
                       onClick={handleLogout}
-                      className="w-full rounded-lg px-3 py-2 text-left text-slate-200 hover:bg-slate-800"
+                      className={`w-full rounded-lg px-3 py-2 text-left ${
+                        isDark
+                          ? 'text-slate-200 hover:bg-slate-800'
+                          : 'text-slate-700 hover:bg-slate-100'
+                      }`}
                     >
                       Log out
                     </button>
@@ -271,7 +339,7 @@ export function Navbar() {
       </div>
       <SignUpModal
         isOpen={isSignUpOpen}
-        isDark
+        isDark={isDark}
         onClose={() => {
           setIsSignUpOpen(false);
           clearAuthParam();
@@ -280,7 +348,7 @@ export function Navbar() {
       />
       <LoginModal
         isOpen={isLoginOpen}
-        isDark
+        isDark={isDark}
         onClose={() => {
           setIsLoginOpen(false);
           clearAuthParam();

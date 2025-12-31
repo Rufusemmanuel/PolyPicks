@@ -9,6 +9,7 @@ import { useBookmarks } from '@/lib/useBookmarks';
 import { useMarkets } from '@/lib/useMarkets';
 import type { MarketSummary } from '@/lib/polymarket/types';
 import { resolveFinalPrice, resolveOutcomePrice } from '@/lib/polymarket/settlement';
+import { useTheme } from '@/components/theme-context';
 
 type MarketWithStrings = Omit<MarketSummary, 'endDate' | 'closedTime'> & {
   endDate: string;
@@ -16,6 +17,7 @@ type MarketWithStrings = Omit<MarketSummary, 'endDate' | 'closedTime'> & {
 };
 
 export default function TradeClient() {
+  const { isDark } = useTheme();
   const sessionQuery = useSession();
   const user = sessionQuery.data?.user ?? null;
   const bookmarksQuery = useBookmarks(Boolean(user));
@@ -127,32 +129,60 @@ export default function TradeClient() {
 
   if (!user) {
     return (
-      <main className="min-h-screen bg-[#0b1224] text-slate-100">
+      <main
+        className={
+          isDark
+            ? 'min-h-screen bg-[#0b1224] text-slate-100'
+            : 'min-h-screen bg-slate-50 text-slate-900'
+        }
+      >
         <div className="mx-auto max-w-4xl px-4 py-12">
-          <p className="text-sm text-slate-300">Redirecting to login...</p>
+          <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+            Redirecting to login...
+          </p>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#0b1224] text-slate-100">
+    <main
+      className={
+        isDark
+          ? 'min-h-screen bg-[#0b1224] text-slate-100'
+          : 'min-h-screen bg-slate-50 text-slate-900'
+      }
+    >
       <div className="mx-auto max-w-5xl px-4 py-12 space-y-6">
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-blue-400">Trade</p>
           <h1 className="text-3xl font-semibold">Trade</h1>
-          <p className="text-sm text-slate-400">
+          <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
             Coming soon. Start with your bookmarked markets.
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-[#0f182c] p-6 space-y-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+        <div
+          className={`rounded-2xl border p-6 space-y-4 ${
+            isDark ? 'border-slate-800 bg-[#0f182c]' : 'border-slate-200 bg-white'
+          }`}
+        >
+          <h2
+            className={`text-sm font-semibold uppercase tracking-wide ${
+              isDark ? 'text-slate-300' : 'text-slate-600'
+            }`}
+          >
             Bookmarked markets
           </h2>
-          {removeError && <p className="text-sm text-red-300">{removeError}</p>}
+          {removeError && (
+            <p className={`text-sm ${isDark ? 'text-red-300' : 'text-red-600'}`}>
+              {removeError}
+            </p>
+          )}
           {bookmarkedMarkets.length === 0 && (
-            <p className="text-sm text-slate-400">No bookmarks yet.</p>
+            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+              No bookmarks yet.
+            </p>
           )}
           {bookmarkedMarkets.length > 0 && (
             <div className="space-y-3">
@@ -164,13 +194,19 @@ export default function TradeClient() {
                 return (
                 <div
                   key={bookmark.marketId}
-                  className="flex flex-col gap-4 rounded-xl border border-slate-800 bg-[#0b1224] p-4 sm:flex-row sm:items-center sm:justify-between"
+                  className={`flex flex-col gap-4 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between ${
+                    isDark ? 'border-slate-800 bg-[#0b1224]' : 'border-slate-200 bg-slate-50'
+                  }`}
                 >
                   <div className="min-w-0 flex-1 space-y-2">
-                    <p className="text-sm text-slate-400">{category}</p>
+                    <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      {category}
+                    </p>
                     <div className="flex flex-wrap items-center gap-2">
                       <p
-                        className="truncate text-base font-semibold text-slate-100"
+                        className={`truncate text-base font-semibold ${
+                          isDark ? 'text-slate-100' : 'text-slate-900'
+                        }`}
                         title={title}
                       >
                         {title}
@@ -190,8 +226,12 @@ export default function TradeClient() {
                           }
                           className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
                             alert.enabled
-                              ? 'border-blue-500/60 text-blue-100 hover:border-blue-400'
-                              : 'border-slate-700 text-slate-400 hover:border-slate-500'
+                              ? isDark
+                                ? 'border-blue-500/60 text-blue-100 hover:border-blue-400'
+                                : 'border-blue-200 text-blue-700 hover:border-blue-300'
+                              : isDark
+                                ? 'border-slate-700 text-slate-400 hover:border-slate-500'
+                                : 'border-slate-300 text-slate-500 hover:border-slate-400'
                           }`}
                         >
                           <span aria-hidden="true">🔔</span>
@@ -223,7 +263,11 @@ export default function TradeClient() {
                           outcomeLabel: bookmark.outcomeLabel ?? null,
                         })
                       }
-                      className="inline-flex h-10 min-w-[130px] items-center justify-center whitespace-nowrap rounded-full border border-slate-700 px-4 text-xs font-semibold text-slate-200 transition hover:border-slate-400"
+                      className={`inline-flex h-10 min-w-[130px] items-center justify-center whitespace-nowrap rounded-full border px-4 text-xs font-semibold transition hover:border-slate-400 ${
+                        isDark
+                          ? 'border-slate-700 text-slate-200'
+                          : 'border-slate-300 text-slate-700'
+                      }`}
                     >
                       Analytics
                     </button>
@@ -238,7 +282,11 @@ export default function TradeClient() {
                           setRemoveError('Unable to remove bookmark. Please try again.');
                         }
                       }}
-                      className="inline-flex h-10 min-w-[110px] items-center justify-center whitespace-nowrap rounded-full border border-red-500/60 px-4 text-xs font-semibold text-red-200 transition hover:border-red-400"
+                      className={`inline-flex h-10 min-w-[110px] items-center justify-center whitespace-nowrap rounded-full border px-4 text-xs font-semibold transition hover:border-red-400 ${
+                        isDark
+                          ? 'border-red-500/60 text-red-200'
+                          : 'border-red-300 text-red-600'
+                      }`}
                     >
                       Remove
                     </button>
@@ -295,6 +343,7 @@ function AnalyticsModal({
   alertsQuery: ReturnType<typeof useAlerts>;
   onClose: () => void;
 }) {
+  const { isDark } = useTheme();
   const [details, setDetails] = useState<{
     closesAt: string;
     price: number;
@@ -357,12 +406,20 @@ function AnalyticsModal({
   const changeCents = delta != null ? delta * 100 : null;
   const changeClass =
     delta == null
-      ? 'text-slate-300'
+      ? isDark
+        ? 'text-slate-300'
+        : 'text-slate-600'
       : delta > 0
-        ? 'text-emerald-400'
+        ? isDark
+          ? 'text-emerald-400'
+          : 'text-emerald-600'
         : delta < 0
-          ? 'text-red-400'
-          : 'text-slate-300';
+          ? isDark
+            ? 'text-red-400'
+            : 'text-red-600'
+          : isDark
+            ? 'text-slate-300'
+            : 'text-slate-600';
   const changeLabel =
     delta == null
       ? 'N/A'
@@ -401,12 +458,20 @@ function AnalyticsModal({
           : 'Break-even';
   const plClass =
     plDeltaCents == null
-      ? 'border-white/10 bg-white/5 text-slate-300'
+      ? isDark
+        ? 'border-white/10 bg-white/5 text-slate-300'
+        : 'border-slate-200 bg-slate-50 text-slate-700'
       : plDeltaCents > 0
-        ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200'
+        ? isDark
+          ? 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200'
+          : 'border-emerald-200 bg-emerald-50 text-emerald-700'
         : plDeltaCents < 0
-          ? 'border-red-400/20 bg-red-500/10 text-red-200'
-          : 'border-white/10 bg-white/5 text-slate-300';
+          ? isDark
+            ? 'border-red-400/20 bg-red-500/10 text-red-200'
+            : 'border-red-200 bg-red-50 text-red-700'
+          : isDark
+            ? 'border-white/10 bg-white/5 text-slate-300'
+            : 'border-slate-200 bg-slate-50 text-slate-700';
   const plDeltaLabel =
     plDeltaCents == null
       ? null
@@ -524,25 +589,39 @@ function AnalyticsModal({
         className="absolute inset-0 bg-black/50"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-md rounded-2xl border border-slate-800 bg-[#0b1224] p-6 text-slate-100 shadow-2xl">
+      <div
+        className={`relative w-full max-w-md rounded-2xl border p-6 shadow-2xl ${
+          isDark ? 'border-slate-800 bg-[#0b1224] text-slate-100' : 'border-slate-200 bg-white text-slate-900'
+        }`}
+      >
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-400">
               Market analytics
             </p>
             <h2 className="text-xl font-semibold">{modalTitle}</h2>
-            {modalCategory && <p className="text-sm text-slate-400">{modalCategory}</p>}
+            {modalCategory && (
+              <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                {modalCategory}
+              </p>
+            )}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-slate-600 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-400"
+            className={`rounded-full border px-3 py-1 text-xs font-semibold hover:border-slate-400 ${
+              isDark ? 'border-slate-600 text-slate-200' : 'border-slate-300 text-slate-700'
+            }`}
           >
             Close
           </button>
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-2 border-b border-white/10 pb-3">
+        <div
+          className={`mt-5 flex flex-wrap gap-2 border-b pb-3 ${
+            isDark ? 'border-white/10' : 'border-slate-200'
+          }`}
+        >
           {(['analytics', 'alerts'] as const).map((tab) => {
             const isActive = activeTab === tab;
             const isAlertsTab = tab === 'alerts';
@@ -555,8 +634,12 @@ function AnalyticsModal({
                 disabled={isDisabled}
                 className={`rounded-full border px-4 py-1 text-xs font-semibold uppercase tracking-wide ${
                   isActive
-                    ? 'border-blue-400 text-blue-200'
-                    : 'border-slate-700 text-slate-300'
+                    ? isDark
+                      ? 'border-blue-400 text-blue-200'
+                      : 'border-blue-300 text-blue-700'
+                    : isDark
+                      ? 'border-slate-700 text-slate-300'
+                      : 'border-slate-300 text-slate-600'
                 } ${isDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
               >
                 {tab}
@@ -565,7 +648,7 @@ function AnalyticsModal({
           })}
         </div>
         {alertsDisabled && (
-          <p className="mt-2 text-xs text-slate-400">
+          <p className={`mt-2 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
             Alerts are disabled for closed markets.
           </p>
         )}
@@ -574,45 +657,61 @@ function AnalyticsModal({
           <div className="mt-5 grid grid-cols-1 gap-6 text-sm sm:grid-cols-[1fr_220px]">
             <div className="space-y-3">
               <div>
-                <p className="text-slate-400">Bookmarked</p>
+                <p className={isDark ? 'text-slate-400' : 'text-slate-600'}>Bookmarked</p>
                 <p className="font-semibold">
                   {formatDistanceToNow(bookmarkedDate, { addSuffix: true })}
                 </p>
-                <p className="text-xs text-slate-500">{bookmarkedDate.toLocaleString()}</p>
+                <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+                  {bookmarkedDate.toLocaleString()}
+                </p>
               </div>
               <div>
-                <p className="text-slate-400">Price at bookmark</p>
+                <p className={isDark ? 'text-slate-400' : 'text-slate-600'}>
+                  Price at bookmark
+                </p>
                 <p className="font-semibold">
                   {initial != null ? `${(initial * 100).toFixed(1)}c` : 'N/A'}
                 </p>
               </div>
               <div>
-                <p className="text-slate-400">Tracked outcome</p>
+                <p className={isDark ? 'text-slate-400' : 'text-slate-600'}>
+                  Tracked outcome
+                </p>
                 <p className="font-semibold">{outcomeLabel ?? 'Unknown'}</p>
               </div>
               <div>
-                <p className="text-slate-400">Current price</p>
+                <p className={isDark ? 'text-slate-400' : 'text-slate-600'}>
+                  Current price
+                </p>
                 <p className="font-semibold">
                   {currentPrice != null ? `${(currentPrice * 100).toFixed(1)}c` : 'N/A'}
                 </p>
               </div>
               <div>
-                <p className="text-slate-400">Change</p>
+                <p className={isDark ? 'text-slate-400' : 'text-slate-600'}>Change</p>
                 <p className={`font-semibold ${changeClass}`}>{changeLabel}</p>
               </div>
               <div>
-                <p className="text-slate-400">Market status</p>
+                <p className={isDark ? 'text-slate-400' : 'text-slate-600'}>
+                  Market status
+                </p>
                 <p className="font-semibold">{isClosed ? 'Closed' : 'Live'}</p>
                 {isClosed && closedDate && (
-                  <p className="text-xs text-slate-500">{closedDate.toLocaleString()}</p>
+                  <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
+                    {closedDate.toLocaleString()}
+                  </p>
                 )}
                 {pendingResolution && (
-                  <p className="text-xs text-amber-300">Pending resolution</p>
+                  <p className={`text-xs ${isDark ? 'text-amber-300' : 'text-amber-600'}`}>
+                    Pending resolution
+                  </p>
                 )}
               </div>
               {isResolved && (
                 <div>
-                  <p className="text-slate-400">Final price</p>
+                  <p className={isDark ? 'text-slate-400' : 'text-slate-600'}>
+                    Final price
+                  </p>
                   <p className="font-semibold">
                     {finalPrice != null ? `${(finalPrice * 100).toFixed(1)}c` : 'N/A'}
                   </p>
@@ -622,9 +721,17 @@ function AnalyticsModal({
             <div className="space-y-4">
               {isResolved && plDeltaCents != null && plPct != null && (
                 <div className={`h-fit rounded-2xl border p-4 ${plClass}`}>
-                  <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-slate-300">
+                  <div
+                    className={`flex items-center justify-between text-xs font-semibold uppercase tracking-wide ${
+                      isDark ? 'text-slate-300' : 'text-slate-600'
+                    }`}
+                  >
                     <span>P/L</span>
-                    <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-inherit">
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[11px] text-inherit ${
+                        isDark ? 'border-white/10' : 'border-slate-200'
+                      }`}
+                    >
                       {plStatus}
                     </span>
                   </div>
@@ -634,21 +741,41 @@ function AnalyticsModal({
                   <p className="mt-1 text-xs text-inherit">
                     {plPctLabel} {plStatus?.toLowerCase()}
                   </p>
-                  <div className="mt-4 border-t border-white/10 pt-3">
+                  <div
+                    className={`mt-4 border-t pt-3 ${
+                      isDark ? 'border-white/10' : 'border-slate-200'
+                    }`}
+                  >
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                        <p
+                          className={`text-xs uppercase tracking-wide ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
+                          }`}
+                        >
                           Entry
                         </p>
-                        <p className="text-sm font-semibold text-slate-100">
+                        <p
+                          className={`text-sm font-semibold ${
+                            isDark ? 'text-slate-100' : 'text-slate-900'
+                          }`}
+                        >
                           {entryCents?.toFixed(1)}c
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                        <p
+                          className={`text-xs uppercase tracking-wide ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
+                          }`}
+                        >
                           Exit
                         </p>
-                        <p className="text-sm font-semibold text-slate-100">
+                        <p
+                          className={`text-sm font-semibold ${
+                            isDark ? 'text-slate-100' : 'text-slate-900'
+                          }`}
+                        >
                           {exitCents?.toFixed(1)}c
                         </p>
                       </div>
@@ -663,12 +790,24 @@ function AnalyticsModal({
         {activeTab === 'alerts' && (
           <div className="mt-5 space-y-4 text-sm">
             {alertsDisabled && (
-              <p className="rounded-lg border border-slate-700/60 bg-slate-800/40 px-3 py-2 text-xs text-slate-300">
+              <p
+                className={`rounded-lg border px-3 py-2 text-xs ${
+                  isDark
+                    ? 'border-slate-700/60 bg-slate-800/40 text-slate-300'
+                    : 'border-slate-200 bg-slate-50 text-slate-600'
+                }`}
+              >
                 Alerts are disabled for closed markets.
               </p>
             )}
-            <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-[#0f182c] px-4 py-3">
-              <span className="text-sm text-slate-200">Alerts enabled</span>
+            <label
+              className={`flex items-center justify-between rounded-xl border px-4 py-3 ${
+                isDark ? 'border-slate-800 bg-[#0f182c]' : 'border-slate-200 bg-slate-50'
+              }`}
+            >
+              <span className={`text-sm ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                Alerts enabled
+              </span>
               <input
                 type="checkbox"
                 checked={enabled}
@@ -679,7 +818,11 @@ function AnalyticsModal({
             </label>
 
             <div className="space-y-2">
-              <label className="text-xs uppercase tracking-wide text-slate-400">
+              <label
+                className={`text-xs uppercase tracking-wide ${
+                  isDark ? 'text-slate-400' : 'text-slate-500'
+                }`}
+              >
                 Profit threshold (%)
               </label>
               <input
@@ -689,13 +832,21 @@ function AnalyticsModal({
                 value={profitInput}
                 disabled={alertsDisabled}
                 onChange={(event) => setProfitInput(event.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+                className={`w-full rounded-lg border bg-transparent px-3 py-2 text-sm focus:border-blue-400 focus:outline-none ${
+                  isDark
+                    ? 'border-slate-700 text-slate-100 placeholder:text-slate-500'
+                    : 'border-slate-300 text-slate-900 placeholder:text-slate-400'
+                }`}
                 placeholder="e.g. 25"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs uppercase tracking-wide text-slate-400">
+              <label
+                className={`text-xs uppercase tracking-wide ${
+                  isDark ? 'text-slate-400' : 'text-slate-500'
+                }`}
+              >
                 Loss threshold (%)
               </label>
               <input
@@ -705,13 +856,21 @@ function AnalyticsModal({
                 value={lossInput}
                 disabled={alertsDisabled}
                 onChange={(event) => setLossInput(event.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+                className={`w-full rounded-lg border bg-transparent px-3 py-2 text-sm focus:border-blue-400 focus:outline-none ${
+                  isDark
+                    ? 'border-slate-700 text-slate-100 placeholder:text-slate-500'
+                    : 'border-slate-300 text-slate-900 placeholder:text-slate-400'
+                }`}
                 placeholder="e.g. 10"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs uppercase tracking-wide text-slate-400">
+              <label
+                className={`text-xs uppercase tracking-wide ${
+                  isDark ? 'text-slate-400' : 'text-slate-500'
+                }`}
+              >
                 Trigger mode
               </label>
               <div className="flex flex-wrap gap-2">
@@ -721,8 +880,12 @@ function AnalyticsModal({
                   disabled={alertsDisabled}
                   className={`flex-1 rounded-full border px-3 py-2 text-xs font-semibold ${
                     triggerOnce
-                      ? 'border-blue-400 text-blue-100'
-                      : 'border-slate-700 text-slate-300'
+                      ? isDark
+                        ? 'border-blue-400 text-blue-100'
+                        : 'border-blue-300 text-blue-700'
+                      : isDark
+                        ? 'border-slate-700 text-slate-300'
+                        : 'border-slate-300 text-slate-600'
                   }`}
                 >
                   Notify once
@@ -733,8 +896,12 @@ function AnalyticsModal({
                   disabled={alertsDisabled}
                   className={`flex-1 rounded-full border px-3 py-2 text-xs font-semibold ${
                     !triggerOnce
-                      ? 'border-blue-400 text-blue-100'
-                      : 'border-slate-700 text-slate-300'
+                      ? isDark
+                        ? 'border-blue-400 text-blue-100'
+                        : 'border-blue-300 text-blue-700'
+                      : isDark
+                        ? 'border-slate-700 text-slate-300'
+                        : 'border-slate-300 text-slate-600'
                   }`}
                 >
                   Notify repeatedly
@@ -743,7 +910,11 @@ function AnalyticsModal({
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs uppercase tracking-wide text-slate-400">
+              <label
+                className={`text-xs uppercase tracking-wide ${
+                  isDark ? 'text-slate-400' : 'text-slate-500'
+                }`}
+              >
                 Cooldown (minutes)
               </label>
               <input
@@ -753,19 +924,29 @@ function AnalyticsModal({
                 value={cooldownInput}
                 disabled={alertsDisabled}
                 onChange={(event) => setCooldownInput(event.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+                className={`w-full rounded-lg border bg-transparent px-3 py-2 text-sm focus:border-blue-400 focus:outline-none ${
+                  isDark
+                    ? 'border-slate-700 text-slate-100 placeholder:text-slate-500'
+                    : 'border-slate-300 text-slate-900 placeholder:text-slate-400'
+                }`}
                 placeholder="60"
               />
             </div>
 
-            {message && <p className="text-xs text-slate-400">{message}</p>}
+            {message && (
+              <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                {message}
+              </p>
+            )}
 
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={handleSaveAlerts}
                 disabled={alertsDisabled || alertsQuery.isSaving}
-                className="flex-1 rounded-full border border-blue-500/60 px-4 py-2 text-xs font-semibold text-blue-100 transition hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className={`flex-1 rounded-full border px-4 py-2 text-xs font-semibold transition hover:border-blue-400 disabled:cursor-not-allowed disabled:opacity-60 ${
+                  isDark ? 'border-blue-500/60 text-blue-100' : 'border-blue-300 text-blue-700'
+                }`}
               >
                 {alertsQuery.isSaving ? 'Saving...' : 'Save alerts'}
               </button>
@@ -773,7 +954,9 @@ function AnalyticsModal({
                 type="button"
                 onClick={handleDeleteAlerts}
                 disabled={alertsQuery.isDeleting || !existingAlert}
-                className="flex-1 rounded-full border border-red-500/60 px-4 py-2 text-xs font-semibold text-red-200 transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+                className={`flex-1 rounded-full border px-4 py-2 text-xs font-semibold transition hover:border-red-400 disabled:cursor-not-allowed disabled:opacity-60 ${
+                  isDark ? 'border-red-500/60 text-red-200' : 'border-red-300 text-red-600'
+                }`}
               >
                 {alertsQuery.isDeleting ? 'Deleting...' : 'Delete'}
               </button>

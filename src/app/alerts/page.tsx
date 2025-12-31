@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSession } from '@/lib/useSession';
 import { useAlerts } from '@/lib/useAlerts';
+import { useTheme } from '@/components/theme-context';
 
 type EditableAlert = {
   marketId: string;
@@ -18,6 +19,7 @@ type EditableAlert = {
 };
 
 export default function AlertsPage() {
+  const { isDark } = useTheme();
   const sessionQuery = useSession();
   const user = sessionQuery.data?.user ?? null;
   const alertsQuery = useAlerts(Boolean(user));
@@ -58,30 +60,50 @@ export default function AlertsPage() {
 
   if (!user) {
     return (
-      <main className="min-h-screen bg-[#0b1224] text-slate-100">
+      <main
+        className={
+          isDark
+            ? 'min-h-screen bg-[#0b1224] text-slate-100'
+            : 'min-h-screen bg-slate-50 text-slate-900'
+        }
+      >
         <div className="mx-auto max-w-4xl px-4 py-12">
-          <p className="text-sm text-slate-300">Redirecting to login...</p>
+          <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+            Redirecting to login...
+          </p>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#0b1224] text-slate-100">
+    <main
+      className={
+        isDark
+          ? 'min-h-screen bg-[#0b1224] text-slate-100'
+          : 'min-h-screen bg-slate-50 text-slate-900'
+      }
+    >
       <div className="mx-auto max-w-5xl px-4 py-12 space-y-6">
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-blue-400">
             Alerts
           </p>
           <h1 className="text-3xl font-semibold">My alerts</h1>
-          <p className="text-sm text-slate-400">
+          <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
             Manage alert thresholds for your bookmarked markets.
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-800 bg-[#0f182c] p-6 space-y-4">
+        <div
+          className={`rounded-2xl border p-6 space-y-4 ${
+            isDark ? 'border-slate-800 bg-[#0f182c]' : 'border-slate-200 bg-white'
+          }`}
+        >
           {alerts.length === 0 && (
-            <p className="text-sm text-slate-400">No alerts yet.</p>
+            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+              No alerts yet.
+            </p>
           )}
           {alerts.length > 0 && (
             <div className="space-y-4">
@@ -101,28 +123,50 @@ export default function AlertsPage() {
                 return (
                   <div
                     key={alert.marketId}
-                    className="rounded-xl border border-slate-800 bg-[#0b1224] p-4 space-y-4"
+                    className={`rounded-xl border p-4 space-y-4 ${
+                      isDark ? 'border-slate-800 bg-[#0b1224]' : 'border-slate-200 bg-slate-50'
+                    }`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="space-y-1">
-                        <p className="text-xs uppercase tracking-wide text-slate-400">
+                        <p
+                          className={`text-xs uppercase tracking-wide ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
+                          }`}
+                        >
                           {category}
                         </p>
-                        <p className="text-base font-semibold text-slate-100">{title}</p>
+                        <p
+                          className={`text-base font-semibold ${
+                            isDark ? 'text-slate-100' : 'text-slate-900'
+                          }`}
+                        >
+                          {title}
+                        </p>
                       </div>
                       <Link
                         href={`/trade?marketId=${encodeURIComponent(
                           alert.marketId,
                         )}&tab=alerts`}
-                        className="inline-flex h-9 items-center justify-center rounded-full border border-slate-700 px-4 text-xs font-semibold text-slate-200 hover:border-slate-400"
+                        className={`inline-flex h-9 items-center justify-center rounded-full border px-4 text-xs font-semibold hover:border-slate-400 ${
+                          isDark
+                            ? 'border-slate-700 text-slate-200'
+                            : 'border-slate-300 text-slate-700'
+                        }`}
                       >
                         Open in trade
                       </Link>
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
-                      <label className="flex items-center justify-between rounded-xl border border-slate-800 bg-[#0f182c] px-4 py-3 text-sm">
-                        <span className="text-slate-200">Enabled</span>
+                      <label
+                        className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm ${
+                          isDark ? 'border-slate-800 bg-[#0f182c]' : 'border-slate-200 bg-white'
+                        }`}
+                      >
+                        <span className={isDark ? 'text-slate-200' : 'text-slate-700'}>
+                          Enabled
+                        </span>
                         <input
                           type="checkbox"
                           checked={draft.enabled}
@@ -139,7 +183,11 @@ export default function AlertsPage() {
                         />
                       </label>
                       <div className="space-y-2">
-                        <label className="text-xs uppercase tracking-wide text-slate-400">
+                        <label
+                          className={`text-xs uppercase tracking-wide ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
+                          }`}
+                        >
                           Trigger mode
                         </label>
                         <div className="flex gap-2">
@@ -153,8 +201,12 @@ export default function AlertsPage() {
                             }
                             className={`flex-1 rounded-full border px-3 py-2 text-xs font-semibold ${
                               draft.triggerOnce
-                                ? 'border-blue-400 text-blue-100'
-                                : 'border-slate-700 text-slate-300'
+                                ? isDark
+                                  ? 'border-blue-400 text-blue-100'
+                                  : 'border-blue-300 text-blue-700'
+                                : isDark
+                                  ? 'border-slate-700 text-slate-300'
+                                  : 'border-slate-300 text-slate-600'
                             }`}
                           >
                             Notify once
@@ -169,8 +221,12 @@ export default function AlertsPage() {
                             }
                             className={`flex-1 rounded-full border px-3 py-2 text-xs font-semibold ${
                               !draft.triggerOnce
-                                ? 'border-blue-400 text-blue-100'
-                                : 'border-slate-700 text-slate-300'
+                                ? isDark
+                                  ? 'border-blue-400 text-blue-100'
+                                  : 'border-blue-300 text-blue-700'
+                                : isDark
+                                  ? 'border-slate-700 text-slate-300'
+                                  : 'border-slate-300 text-slate-600'
                             }`}
                           >
                             Notify repeatedly
@@ -178,7 +234,11 @@ export default function AlertsPage() {
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <label className="text-xs uppercase tracking-wide text-slate-400">
+                        <label
+                          className={`text-xs uppercase tracking-wide ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
+                          }`}
+                        >
                           Profit threshold (%)
                         </label>
                         <input
@@ -197,12 +257,20 @@ export default function AlertsPage() {
                               },
                             }))
                           }
-                          className="w-full rounded-lg border border-slate-700 bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+                          className={`w-full rounded-lg border bg-transparent px-3 py-2 text-sm focus:border-blue-400 focus:outline-none ${
+                            isDark
+                              ? 'border-slate-700 text-slate-100 placeholder:text-slate-500'
+                              : 'border-slate-300 text-slate-900 placeholder:text-slate-400'
+                          }`}
                           placeholder="e.g. 25"
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-xs uppercase tracking-wide text-slate-400">
+                        <label
+                          className={`text-xs uppercase tracking-wide ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
+                          }`}
+                        >
                           Loss threshold (%)
                         </label>
                         <input
@@ -221,12 +289,20 @@ export default function AlertsPage() {
                               },
                             }))
                           }
-                          className="w-full rounded-lg border border-slate-700 bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+                          className={`w-full rounded-lg border bg-transparent px-3 py-2 text-sm focus:border-blue-400 focus:outline-none ${
+                            isDark
+                              ? 'border-slate-700 text-slate-100 placeholder:text-slate-500'
+                              : 'border-slate-300 text-slate-900 placeholder:text-slate-400'
+                          }`}
                           placeholder="e.g. 10"
                         />
                       </div>
                       <div className="space-y-2 md:col-span-2">
-                        <label className="text-xs uppercase tracking-wide text-slate-400">
+                        <label
+                          className={`text-xs uppercase tracking-wide ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
+                          }`}
+                        >
                           Cooldown (minutes)
                         </label>
                         <input
@@ -245,7 +321,11 @@ export default function AlertsPage() {
                               },
                             }))
                           }
-                          className="w-full rounded-lg border border-slate-700 bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
+                          className={`w-full rounded-lg border bg-transparent px-3 py-2 text-sm focus:border-blue-400 focus:outline-none ${
+                            isDark
+                              ? 'border-slate-700 text-slate-100 placeholder:text-slate-500'
+                              : 'border-slate-300 text-slate-900 placeholder:text-slate-400'
+                          }`}
                           placeholder="60"
                         />
                       </div>
@@ -264,7 +344,9 @@ export default function AlertsPage() {
                             enabled: draft.enabled,
                           });
                         }}
-                        className="inline-flex h-9 items-center justify-center rounded-full border border-blue-500/60 px-4 text-xs font-semibold text-blue-100 transition hover:border-blue-400"
+                        className={`inline-flex h-9 items-center justify-center rounded-full border px-4 text-xs font-semibold transition hover:border-blue-400 ${
+                          isDark ? 'border-blue-500/60 text-blue-100' : 'border-blue-300 text-blue-700'
+                        }`}
                       >
                         Save
                       </button>
@@ -273,7 +355,9 @@ export default function AlertsPage() {
                         onClick={async () => {
                           await alertsQuery.deleteAlert(alert.marketId);
                         }}
-                        className="inline-flex h-9 items-center justify-center rounded-full border border-red-500/60 px-4 text-xs font-semibold text-red-200 transition hover:border-red-400"
+                        className={`inline-flex h-9 items-center justify-center rounded-full border px-4 text-xs font-semibold transition hover:border-red-400 ${
+                          isDark ? 'border-red-500/60 text-red-200' : 'border-red-300 text-red-600'
+                        }`}
                       >
                         Delete
                       </button>

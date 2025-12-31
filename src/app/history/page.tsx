@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useSession } from '@/lib/useSession';
 import { HistoryExportDom } from '@/components/exports/HistoryExportDom';
+import { useTheme } from '@/components/theme-context';
 import type {
   HistoryExportRow,
   HistoryExportSummary,
@@ -119,31 +120,60 @@ type HistoryRow = HistoryBookmark & {
 };
 
 function TradeHistoryMobileCard({ row }: { row: HistoryRow }) {
+  const { isDark } = useTheme();
   const plClass =
     row.profitDelta == null
-      ? 'text-slate-300'
+      ? isDark
+        ? 'text-slate-300'
+        : 'text-slate-600'
       : row.profitDelta > 0
-        ? 'text-emerald-300'
+        ? isDark
+          ? 'text-emerald-300'
+          : 'text-emerald-600'
         : row.profitDelta < 0
-          ? 'text-red-300'
-          : 'text-slate-200';
+          ? isDark
+            ? 'text-red-300'
+            : 'text-red-600'
+          : isDark
+            ? 'text-slate-200'
+            : 'text-slate-700';
   const statusClass =
     row.status === 'Removed'
-      ? 'border-red-500/40 text-red-200'
+      ? isDark
+        ? 'border-red-500/40 text-red-200'
+        : 'border-red-200 text-red-600'
       : row.status === 'Closed'
-        ? 'border-emerald-500/40 text-emerald-200'
+        ? isDark
+          ? 'border-emerald-500/40 text-emerald-200'
+          : 'border-emerald-200 text-emerald-700'
         : row.status === 'Pending resolution'
-          ? 'border-amber-400/40 text-amber-200'
-          : 'border-blue-500/40 text-blue-200';
+          ? isDark
+            ? 'border-amber-400/40 text-amber-200'
+            : 'border-amber-200 text-amber-700'
+          : isDark
+            ? 'border-blue-500/40 text-blue-200'
+            : 'border-blue-200 text-blue-700';
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-[#0f182c] p-4">
+    <div
+      className={`rounded-2xl border p-4 ${
+        isDark ? 'border-slate-800 bg-[#0f182c]' : 'border-slate-200 bg-white'
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-slate-100 break-words">
+          <p
+            className={`text-sm font-semibold break-words ${
+              isDark ? 'text-slate-100' : 'text-slate-900'
+            }`}
+          >
             {row.title ?? 'Unknown market'}
           </p>
-          <p className="mt-1 text-xs text-slate-400 break-words">
+          <p
+            className={`mt-1 text-xs break-words ${
+              isDark ? 'text-slate-400' : 'text-slate-500'
+            }`}
+          >
             {row.category ?? 'Unknown'}
           </p>
         </div>
@@ -155,41 +185,79 @@ function TradeHistoryMobileCard({ row }: { row: HistoryRow }) {
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-3 text-xs">
-        <span className="text-slate-500">Bookmarked</span>
-        <span className="text-slate-200">
+        <span className={isDark ? 'text-slate-500' : 'text-slate-500'}>Bookmarked</span>
+        <span className={isDark ? 'text-slate-200' : 'text-slate-700'}>
           {new Date(row.createdAt).toLocaleDateString()} -{' '}
-          <span className="text-slate-400">
+          <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
             {new Date(row.createdAt).toLocaleTimeString()}
           </span>
         </span>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3 max-[380px]:grid-cols-1">
-        <div className="rounded-xl border border-slate-800 bg-[#111b33] px-3 py-2">
-          <p className="text-[11px] uppercase tracking-wide text-slate-400">Entry</p>
-          <p className="mt-1 text-sm font-semibold text-slate-100">
+        <div
+          className={`rounded-xl border px-3 py-2 ${
+            isDark ? 'border-slate-800 bg-[#111b33]' : 'border-slate-200 bg-slate-50'
+          }`}
+        >
+          <p
+            className={`text-[11px] uppercase tracking-wide ${
+              isDark ? 'text-slate-400' : 'text-slate-500'
+            }`}
+          >
+            Entry
+          </p>
+          <p className={`mt-1 text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
             {formatPrice(row.entryPrice)}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-[#111b33] px-3 py-2">
-          <p className="text-[11px] uppercase tracking-wide text-slate-400">
+        <div
+          className={`rounded-xl border px-3 py-2 ${
+            isDark ? 'border-slate-800 bg-[#111b33]' : 'border-slate-200 bg-slate-50'
+          }`}
+        >
+          <p
+            className={`text-[11px] uppercase tracking-wide ${
+              isDark ? 'text-slate-400' : 'text-slate-500'
+            }`}
+          >
             Final / Current
           </p>
-          <p className="mt-1 text-sm font-semibold text-slate-100">
+          <p className={`mt-1 text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
             {formatPrice(row.latestPrice)}
           </p>
         </div>
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 max-[380px]:grid-cols-1">
-        <div className="rounded-xl border border-slate-800 bg-[#111b33] px-3 py-2">
-          <p className="text-[11px] uppercase tracking-wide text-slate-400">P/L</p>
+        <div
+          className={`rounded-xl border px-3 py-2 ${
+            isDark ? 'border-slate-800 bg-[#111b33]' : 'border-slate-200 bg-slate-50'
+          }`}
+        >
+          <p
+            className={`text-[11px] uppercase tracking-wide ${
+              isDark ? 'text-slate-400' : 'text-slate-500'
+            }`}
+          >
+            P/L
+          </p>
           <p className={`mt-1 text-sm font-semibold ${plClass}`}>
             {formatSigned(row.profitDelta != null ? row.profitDelta * 100 : null)}
           </p>
         </div>
-        <div className="rounded-xl border border-slate-800 bg-[#111b33] px-3 py-2">
-          <p className="text-[11px] uppercase tracking-wide text-slate-400">Return</p>
+        <div
+          className={`rounded-xl border px-3 py-2 ${
+            isDark ? 'border-slate-800 bg-[#111b33]' : 'border-slate-200 bg-slate-50'
+          }`}
+        >
+          <p
+            className={`text-[11px] uppercase tracking-wide ${
+              isDark ? 'text-slate-400' : 'text-slate-500'
+            }`}
+          >
+            Return
+          </p>
           <p className={`mt-1 text-sm font-semibold ${plClass}`}>
             {formatPct(row.returnPct)}
           </p>
@@ -200,6 +268,7 @@ function TradeHistoryMobileCard({ row }: { row: HistoryRow }) {
 }
 
 export default function HistoryPage() {
+  const { isDark } = useTheme();
   const sessionQuery = useSession();
   const user = sessionQuery.data?.user ?? null;
   const router = useRouter();
@@ -395,16 +464,30 @@ export default function HistoryPage() {
 
   if (!user) {
     return (
-      <main className="min-h-screen bg-[#0b1224] text-slate-100">
+      <main
+        className={
+          isDark
+            ? 'min-h-screen bg-[#0b1224] text-slate-100'
+            : 'min-h-screen bg-slate-50 text-slate-900'
+        }
+      >
         <div className="mx-auto max-w-5xl px-4 py-12">
-          <p className="text-sm text-slate-300">Redirecting to login...</p>
+          <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+            Redirecting to login...
+          </p>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#0b1224] text-slate-100">
+    <main
+      className={
+        isDark
+          ? 'min-h-screen bg-[#0b1224] text-slate-100'
+          : 'min-h-screen bg-slate-50 text-slate-900'
+      }
+    >
       <div className="mx-auto max-w-6xl px-4 py-12 space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -412,7 +495,7 @@ export default function HistoryPage() {
               History
             </p>
             <h1 className="text-3xl font-semibold">Bookmarked trades</h1>
-            <p className="text-sm text-slate-400">
+            <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
               Track performance across all bookmarks, even removed ones.
             </p>
           </div>
@@ -427,7 +510,9 @@ export default function HistoryPage() {
                   className={`rounded-full border px-4 py-1.5 text-xs font-semibold uppercase tracking-wide transition ${
                     isActive
                       ? 'border-blue-400 bg-blue-500/20 text-blue-100'
-                      : 'border-slate-700 text-slate-300 hover:border-slate-500'
+                      : isDark
+                        ? 'border-slate-700 text-slate-300 hover:border-slate-500'
+                        : 'border-slate-300 text-slate-600 hover:border-slate-400'
                   }`}
                 >
                   {option.label}
@@ -439,50 +524,100 @@ export default function HistoryPage() {
 
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-4 lg:grid-cols-5">
-            <div className="rounded-2xl border border-slate-800 bg-[#0f182c] p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-400">Trades</p>
+            <div
+              className={`rounded-2xl border p-4 ${
+                isDark ? 'border-slate-800 bg-[#0f182c]' : 'border-slate-200 bg-white'
+              }`}
+            >
+              <p
+                className={`text-xs uppercase tracking-wide ${
+                  isDark ? 'text-slate-400' : 'text-slate-500'
+                }`}
+              >
+                Trades
+              </p>
               <p className="mt-2 text-2xl font-semibold">{summary.count}</p>
             </div>
-            <div className="rounded-2xl border border-slate-800 bg-[#0f182c] p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-400">Win rate</p>
+            <div
+              className={`rounded-2xl border p-4 ${
+                isDark ? 'border-slate-800 bg-[#0f182c]' : 'border-slate-200 bg-white'
+              }`}
+            >
+              <p
+                className={`text-xs uppercase tracking-wide ${
+                  isDark ? 'text-slate-400' : 'text-slate-500'
+                }`}
+              >
+                Win rate
+              </p>
               <p className="mt-2 text-2xl font-semibold">
                 {summary.winRate == null ? 'N/A' : `${summary.winRate.toFixed(1)}%`}
               </p>
             </div>
-            <div className="rounded-2xl border border-slate-800 bg-[#0f182c] p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-400">Total P/L</p>
+            <div
+              className={`rounded-2xl border p-4 ${
+                isDark ? 'border-slate-800 bg-[#0f182c]' : 'border-slate-200 bg-white'
+              }`}
+            >
+              <p
+                className={`text-xs uppercase tracking-wide ${
+                  isDark ? 'text-slate-400' : 'text-slate-500'
+                }`}
+              >
+                Total P/L
+              </p>
               <p
                 className={`mt-2 text-2xl font-semibold ${
                   summary.totalPL > 0
-                    ? 'text-emerald-300'
+                    ? isDark
+                      ? 'text-emerald-300'
+                      : 'text-emerald-600'
                     : summary.totalPL < 0
-                      ? 'text-red-300'
-                      : 'text-slate-100'
+                      ? isDark
+                        ? 'text-red-300'
+                        : 'text-red-600'
+                      : isDark
+                        ? 'text-slate-100'
+                        : 'text-slate-900'
                 }`}
               >
                 {formatSigned(summary.totalPL * 100)}
               </p>
             </div>
-            <div className="rounded-2xl border border-slate-800 bg-[#0f182c] p-4 md:col-span-2 lg:col-span-2">
+            <div
+              className={`rounded-2xl border p-4 md:col-span-2 lg:col-span-2 ${
+                isDark ? 'border-slate-800 bg-[#0f182c]' : 'border-slate-200 bg-white'
+              }`}
+            >
               <div className="flex items-center justify-between">
-                <p className="text-xs uppercase tracking-wide text-slate-400">Best trade</p>
-                <span className="text-xs text-slate-500">
+                <p
+                  className={`text-xs uppercase tracking-wide ${
+                    isDark ? 'text-slate-400' : 'text-slate-500'
+                  }`}
+                >
+                  Best trade
+                </p>
+                <span className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
                   {summary.best?.returnPct != null
                     ? formatPct(summary.best.returnPct)
                     : 'N/A'}
                 </span>
               </div>
-              <p className="mt-2 text-sm text-slate-100">
+              <p className={`mt-2 text-sm ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
                 {summary.best?.title ?? 'N/A'}
               </p>
-              <p className="mt-4 text-xs uppercase tracking-wide text-slate-400">
+              <p
+                className={`mt-4 text-xs uppercase tracking-wide ${
+                  isDark ? 'text-slate-400' : 'text-slate-500'
+                }`}
+              >
                 Worst trade
               </p>
               <div className="mt-2 flex items-center justify-between gap-4">
-                <p className="text-sm text-slate-200">
+                <p className={`text-sm ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
                   {summary.worst?.title ?? 'N/A'}
                 </p>
-                <span className="text-xs text-slate-500">
+                <span className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
                   {summary.worst?.returnPct != null
                     ? formatPct(summary.worst.returnPct)
                     : 'N/A'}
@@ -491,14 +626,24 @@ export default function HistoryPage() {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-800 bg-[#0f182c] p-6">
+          <div
+            className={`rounded-2xl border p-6 ${
+              isDark ? 'border-slate-800 bg-[#0f182c]' : 'border-slate-200 bg-white'
+            }`}
+          >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-300">
+                <h2
+                  className={`text-sm font-semibold uppercase tracking-wide ${
+                    isDark ? 'text-slate-300' : 'text-slate-600'
+                  }`}
+                >
                   History
                 </h2>
                 {historyQuery.isLoading && (
-                  <span className="text-xs text-slate-400">Loading...</span>
+                  <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Loading...
+                  </span>
                 )}
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -506,7 +651,11 @@ export default function HistoryPage() {
                   type="button"
                   onClick={exportAsPng}
                   disabled={isExporting != null}
-                  className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-200 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                  className={`inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-xs font-semibold transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${
+                    isDark
+                      ? 'border-slate-700 text-slate-200'
+                      : 'border-slate-300 text-slate-700'
+                  }`}
                 >
                   {isExporting === 'png' ? 'Exporting...' : 'Download PNG'}
                 </button>
@@ -514,7 +663,11 @@ export default function HistoryPage() {
                   type="button"
                   onClick={exportAsPdf}
                   disabled={isExporting != null}
-                  className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border border-slate-700 px-4 py-2.5 text-xs font-semibold text-slate-200 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                  className={`inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-xs font-semibold transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto ${
+                    isDark
+                      ? 'border-slate-700 text-slate-200'
+                      : 'border-slate-300 text-slate-700'
+                  }`}
                 >
                   {isExporting === 'pdf' ? 'Exporting...' : 'Download PDF'}
                 </button>
@@ -522,13 +675,13 @@ export default function HistoryPage() {
             </div>
 
             {historyQuery.isError && (
-              <p className="mt-4 text-sm text-red-300">
+              <p className={`mt-4 text-sm ${isDark ? 'text-red-300' : 'text-red-600'}`}>
                 Unable to load history. Please try again.
               </p>
             )}
 
             {!historyQuery.isLoading && rows.length === 0 && (
-              <p className="mt-4 text-sm text-slate-400">
+              <p className={`mt-4 text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                 No bookmarked trades in this timeframe.
               </p>
             )}
@@ -542,7 +695,11 @@ export default function HistoryPage() {
                 </div>
                 <div className="hidden overflow-x-auto md:block">
                   <table className="min-w-full text-sm">
-                    <thead className="text-left text-xs uppercase tracking-wide text-slate-400">
+                    <thead
+                      className={`text-left text-xs uppercase tracking-wide ${
+                        isDark ? 'text-slate-400' : 'text-slate-500'
+                      }`}
+                    >
                       <tr>
                         <th className="px-3 py-2">Market</th>
                         <th className="px-3 py-2">Bookmarked</th>
@@ -553,44 +710,71 @@ export default function HistoryPage() {
                         <th className="px-3 py-2">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800">
+                    <tbody className={`divide-y ${isDark ? 'divide-slate-800' : 'divide-slate-200'}`}>
                       {rows.map((row) => {
                         const plClass =
                           row.profitDelta == null
-                            ? 'text-slate-300'
+                            ? isDark
+                              ? 'text-slate-300'
+                              : 'text-slate-600'
                             : row.profitDelta > 0
-                              ? 'text-emerald-300'
+                              ? isDark
+                                ? 'text-emerald-300'
+                                : 'text-emerald-600'
                               : row.profitDelta < 0
-                                ? 'text-red-300'
-                                : 'text-slate-200';
+                                ? isDark
+                                  ? 'text-red-300'
+                                  : 'text-red-600'
+                                : isDark
+                                  ? 'text-slate-200'
+                                  : 'text-slate-700';
                         const statusClass =
                           row.status === 'Removed'
-                            ? 'border-red-500/40 text-red-200'
+                            ? isDark
+                              ? 'border-red-500/40 text-red-200'
+                              : 'border-red-200 text-red-600'
                             : row.status === 'Closed'
-                              ? 'border-emerald-500/40 text-emerald-200'
+                              ? isDark
+                                ? 'border-emerald-500/40 text-emerald-200'
+                                : 'border-emerald-200 text-emerald-700'
                               : row.status === 'Pending resolution'
-                                ? 'border-amber-400/40 text-amber-200'
-                                : 'border-blue-500/40 text-blue-200';
+                                ? isDark
+                                  ? 'border-amber-400/40 text-amber-200'
+                                  : 'border-amber-200 text-amber-700'
+                                : isDark
+                                  ? 'border-blue-500/40 text-blue-200'
+                                  : 'border-blue-200 text-blue-700';
                         return (
-                          <tr key={row.id} className="hover:bg-[#111b33]">
+                          <tr
+                            key={row.id}
+                            className={isDark ? 'hover:bg-[#111b33]' : 'hover:bg-slate-50'}
+                          >
                             <td className="px-3 py-3">
-                              <div className="text-sm font-semibold text-slate-100">
+                              <div
+                                className={`text-sm font-semibold ${
+                                  isDark ? 'text-slate-100' : 'text-slate-900'
+                                }`}
+                              >
                                 {row.title ?? 'Unknown market'}
                               </div>
-                              <div className="text-xs text-slate-400">
+                              <div
+                                className={`text-xs ${
+                                  isDark ? 'text-slate-400' : 'text-slate-500'
+                                }`}
+                              >
                                 {row.category ?? 'Unknown'}
                               </div>
                             </td>
-                            <td className="px-3 py-3 text-slate-300">
+                            <td className={`px-3 py-3 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                               <div>{new Date(row.createdAt).toLocaleDateString()}</div>
-                              <div className="text-xs text-slate-500">
+                              <div className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                                 {new Date(row.createdAt).toLocaleTimeString()}
                               </div>
                             </td>
-                            <td className="px-3 py-3 text-slate-200">
+                            <td className={`px-3 py-3 ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
                               {formatPrice(row.entryPrice)}
                             </td>
-                            <td className="px-3 py-3 text-slate-200">
+                            <td className={`px-3 py-3 ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
                               {formatPrice(row.latestPrice)}
                             </td>
                             <td className={`px-3 py-3 font-semibold ${plClass}`}>
