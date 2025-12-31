@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getUserFromRequest } from '@/lib/auth';
 import { getMarketDetails } from '@/lib/polymarket/api';
@@ -59,7 +60,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const updates = [];
+    const updates: Prisma.PrismaPromise<unknown>[] = [];
     const response = NextResponse.json({
       bookmarks: bookmarks.map((b) => {
         const market = marketMap.get(b.marketId) ?? null;
