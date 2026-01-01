@@ -15,6 +15,7 @@ body {
   color: var(--text-page);
 }
 
+.dark,
 body[data-theme='dark'] {
   color-scheme: dark;
   --bg-page: #0b1224;
