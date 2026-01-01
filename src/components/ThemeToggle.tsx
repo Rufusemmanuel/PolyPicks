@@ -9,17 +9,35 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={toggleTheme}
-      className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold shadow-sm transition ${
-        isDark
-          ? 'border-slate-600 bg-[#0f1a32]/80 text-slate-100 shadow-slate-900/50 hover:border-slate-400 hover:text-white'
-          : 'border-slate-300 bg-white text-slate-800 shadow-slate-200 hover:border-slate-500 hover:text-slate-900'
-      }`}
-      aria-label="Toggle light and dark mode"
+      role="switch"
+      aria-checked={isDark}
+      aria-label="Toggle dark mode"
+      className="group inline-flex items-center gap-2"
     >
-      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#002cff] text-[10px] text-white">
-        {isDark ? '?' : '?'}
+      <span
+        className={`text-[11px] font-semibold ${
+          isDark ? 'text-slate-300' : 'text-slate-600'
+        }`}
+      >
+        {isDark ? 'Dark' : 'Light'}
       </span>
-      <span>{isDark ? 'Dark' : 'Light'} mode</span>
+      <span
+        className={`relative inline-flex h-6 w-11 items-center rounded-full border transition ${
+          isDark
+            ? 'border-slate-600 bg-[#0f1a32]'
+            : 'border-slate-300 bg-white'
+        } group-focus-visible:outline-none group-focus-visible:ring-2 group-focus-visible:ring-[#002cff] group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-transparent`}
+      >
+        <span
+          className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] text-white shadow transition ${
+            isDark
+              ? 'translate-x-5 bg-[#002cff]'
+              : 'translate-x-1 bg-slate-400'
+          }`}
+        >
+          {isDark ? '☾' : '☀'}
+        </span>
+      </span>
     </button>
   );
 }
