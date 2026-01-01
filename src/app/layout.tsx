@@ -15,9 +15,7 @@ export const metadata: Metadata = {
 
 const themeInitScript = `
 (function () {
-  try {
-    var stored = localStorage.getItem('theme');
-    var theme = stored === 'light' || stored === 'dark' ? stored : 'dark';
+  function applyTheme(theme) {
     var root = document.documentElement;
     if (theme === 'dark') {
       root.classList.add('dark');
@@ -26,7 +24,14 @@ const themeInitScript = `
     }
     root.dataset.theme = theme;
     root.style.colorScheme = theme === 'dark' ? 'dark' : 'light';
-  } catch (e) {}
+  }
+  try {
+    var stored = localStorage.getItem('theme');
+    var theme = stored === 'light' || stored === 'dark' ? stored : 'dark';
+    applyTheme(theme);
+  } catch (e) {
+    applyTheme('dark');
+  }
 })();
 `;
 
@@ -38,6 +43,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <meta name="color-scheme" content="dark light" />
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body>

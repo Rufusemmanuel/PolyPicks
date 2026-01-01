@@ -4,22 +4,30 @@
 
 :root {
   color-scheme: light;
-  --bg-page: #ffffff;
-  --text-page: #0f172a;
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+  --bg-page: hsl(var(--background));
+  --text-page: hsl(var(--foreground));
   --scroll-thumb: #002cff;
+}
+
+html,
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
 }
 
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background: var(--bg-page);
-  color: var(--text-page);
 }
 
 .dark,
 body[data-theme='dark'] {
   color-scheme: dark;
-  --bg-page: #0b1224;
-  --text-page: #e2e8f0;
+  --background: 223 53% 9%;
+  --foreground: 214 32% 91%;
+  --bg-page: hsl(var(--background));
+  --text-page: hsl(var(--foreground));
   --scroll-thumb: #4a6fff;
 }
 
