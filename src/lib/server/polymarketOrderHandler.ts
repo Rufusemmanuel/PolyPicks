@@ -283,15 +283,114 @@ export const createOrderHandler = ({
         });
       }
 
-      const res = await doFetch(`${clobHost}${requestPath}`, {
-        method: 'POST',
-        headers,
-        body,
-      });
-      const text = await res.text();
+      const baseHeaders = {
+        'User-Agent': 'Mozilla/5.0 (compatible; PolyPicks/1.0; +https://polypicks.xyz)',
+        'Accept': 'application/json,text/plain,*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+      };
+      const timeoutMs = 12_000;
+      const maxAttempts = 3;
+      const retryableStatuses = new Set([408, 429, 500, 502, 503, 504, 520, 522, 523, 524]);
+      let res: Response | null = null;
+      let text = '';
+
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          res = await doFetch(`${clobHost}${requestPath}`, {
+            method: 'POST',
+            headers: {
+              ...headers,
+              ...baseHeaders,
+            },
+            body,
+            signal: controller.signal,
+          });
+          text = await res.text();
+        } catch (error) {
+          clearTimeout(timeoutId);
+          if (attempt < maxAttempts - 1) {
+            const baseDelay = attempt === 0 ? 300 : 900;
+            const jitter = Math.floor(Math.random() * 120);
+            await new Promise((resolve) => setTimeout(resolve, baseDelay + jitter));
+            continue;
+          }
+          return NextResponse.json(
+            { ok: false, error: 'CLOB timeout' },
+            { status: 502, headers: { 'Cache-Control': 'no-store' } },
+          );
+        }
+        clearTimeout(timeoutId);
+
+        if (retryableStatuses.has(res.status)) {
+          if (attempt < maxAttempts - 1) {
+            const baseDelay = attempt === 0 ? 300 : 900;
+            const jitter = Math.floor(Math.random() * 120);
+            await new Promise((resolve) => setTimeout(resolve, baseDelay + jitter));
+            continue;
+          }
+        }
+        break;
+      }
+
+      if (!res) {
+        return NextResponse.json(
+          { ok: false, error: 'CLOB timeout' },
+          { status: 502, headers: { 'Cache-Control': 'no-store' } },
+        );
+      }
+
       if (process.env.NODE_ENV !== 'production') {
         logger.info('[polymarket] order response status', res.status);
       }
+
+      const contentType = res.headers.get('content-type') ?? '';
+      const cfRay = res.headers.get('cf-ray') ?? null;
+      const looksLikeHtml = contentType.includes('text/html') || /<html/i.test(text);
+      const looksLikeCloudflare = Boolean(cfRay) || text.toLowerCase().includes('cloudflare');
+      if (looksLikeHtml || (looksLikeCloudflare && !contentType.includes('application/json'))) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'CLOB error',
+            details: {
+              status: res.status,
+              contentType,
+              cfRay,
+              snippet: text.trim().slice(0, 120) || null,
+            },
+            sent: sentDebug,
+          },
+          { status: 502, headers: { 'Cache-Control': 'no-store' } },
+        );
+      }
+
+      let data: unknown = null;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: 'CLOB error',
+              details: {
+                status: res.status,
+                contentType,
+                cfRay,
+                snippet: text.trim().slice(0, 120) || null,
+              },
+              sent: sentDebug,
+            },
+            { status: 502, headers: { 'Cache-Control': 'no-store' } },
+          );
+        }
+      }
+
       if (!res.ok) {
         return NextResponse.json(
           {
@@ -299,31 +398,29 @@ export const createOrderHandler = ({
             error: 'CLOB error',
             details: {
               status: res.status,
-              body: text ? (() => {
-                try {
-                  return JSON.parse(text);
-                } catch {
-                  return text;
-                }
-              })() : null,
+              body: data ?? null,
             },
             sent: sentDebug,
           },
           { status: 502, headers: { 'Cache-Control': 'no-store' } },
         );
       }
-      const data = text ? JSON.parse(text) : null;
       if (process.env.NODE_ENV !== 'production') {
         const redacted = data && typeof data === 'object'
           ? { ...data, signature: redactSignature((data as { signature?: unknown }).signature) }
           : data;
         logger.info('[polymarket] order response', redacted ?? null);
       }
-      if (data && data.success === false) {
+      if (
+        data
+        && typeof data === 'object'
+        && 'success' in data
+        && (data as { success?: unknown }).success === false
+      ) {
         return NextResponse.json(
           {
             ok: false,
-            error: data.errorMsg ?? 'Order rejected',
+            error: (data as { errorMsg?: string }).errorMsg ?? 'Order rejected',
             details: data,
             sent: sentDebug,
           },
