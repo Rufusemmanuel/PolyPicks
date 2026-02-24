@@ -376,6 +376,36 @@ export function Navbar() {
           )}
         </div>
       </div>
+      <div className="md:hidden">
+        <nav
+          className={`mx-auto max-w-6xl overflow-x-auto whitespace-nowrap px-4 pb-3 text-sm ${
+            isDark ? 'text-slate-100' : 'text-slate-900'
+          }`}
+          aria-label="Primary"
+        >
+          <div className="flex min-w-max items-center gap-2">
+            {navItems.map((item) =>
+              item.kind === 'link' ? (
+                <Link
+                  key={`mobile-${item.href}`}
+                  href={item.href}
+                  className={`${navLinkClass(item.href)} inline-flex min-h-10 items-center justify-center`}
+                >
+                  {item.label}
+                </Link>
+              ) : (
+                <a
+                  key={`mobile-${item.href}`}
+                  href={item.href}
+                  className={`${navLinkClass(item.href)} inline-flex min-h-10 items-center justify-center`}
+                >
+                  {item.label}
+                </a>
+              ),
+            )}
+          </div>
+        </nav>
+      </div>
       <SignUpModal
         isOpen={isSignUpOpen}
         isDark={isDark}
