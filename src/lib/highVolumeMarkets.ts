@@ -1,10 +1,15 @@
 export type MarketWithVolume = { volume?: unknown } & Record<string, unknown>;
 
-export const HIGH_VOLUME_THRESHOLD = 100000;
+export const HIGH_VOLUME_THRESHOLD = 50000;
 export type HomeViewMode = 'markets' | 'high-volume';
 
 export const getVolumeUsd = (market: MarketWithVolume): number => {
-  const raw = market.volume;
+  const raw =
+    market.volume ??
+    market.volumeUSD ??
+    market.volumeUsd ??
+    market.volume_usd ??
+    market.volumeNum;
   if (typeof raw === 'number') {
     return Number.isFinite(raw) ? raw : 0;
   }

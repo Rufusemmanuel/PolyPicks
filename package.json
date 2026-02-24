@@ -13,6 +13,7 @@
     "lint": "next lint",
     "test:category": "tsc -p tsconfig.category-test.json && node .tmp-category-test/scripts/category-harness.js",
     "test:high-volume": "tsx scripts/high-volume-harness.ts",
+    "test:high-volume:prod-smoke": "node scripts/high-volume-prod-smoke.mjs",
     "test:order-payload": "node scripts/dev-test-order-payload.mjs",
     "test:buy-order": "tsx scripts/test-buy-order.ts",
     "test:proxy-wallet": "tsx scripts/test-proxy-wallet.ts",

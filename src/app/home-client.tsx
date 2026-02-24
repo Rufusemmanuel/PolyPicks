@@ -21,7 +21,8 @@ import {
   parseSuggestedTradeFromSearchParams,
   type SuggestedTrade,
 } from '@/lib/polymarket/suggestedTrade';
-import { resolveHomeViewMode, selectMarketsForView } from '@/lib/highVolumeMarkets';
+import { resolveHomeViewMode } from '@/lib/highVolumeMarkets';
+import { deriveHomeViewMarkets } from '@/lib/homeViewCategory';
 
 type MarketWithStrings = Omit<MarketSummary, 'endDate' | 'closedTime'> & {
   endDate: string;
@@ -484,38 +485,21 @@ function MarketsSection({
     );
   }, [marketsByWindow, search]);
 
-  const subdivisionCounts = useMemo(() => {
-    const counts: Record<Subdivision, number> = {
-      Politics: 0,
-      Sports: 0,
-      Finance: 0,
-      Crypto: 0,
-      Geopolitics: 0,
-      Earnings: 0,
-      Tech: 0,
-      Culture: 0,
-      World: 0,
-      Economy: 0,
-      Elections: 0,
-    };
-
-    searchFiltered.forEach((m) => {
-      const sub = mapToSubdivision(m);
-      counts[sub] += 1;
-    });
-
-    return counts;
-  }, [searchFiltered]);
-
-  const visibleMarkets = useMemo<MarketWithStrings[]>(() => {
-    if (activeSubdivision === 'All') return searchFiltered;
-    return searchFiltered.filter((m) => mapToSubdivision(m) === activeSubdivision);
-  }, [activeSubdivision, searchFiltered]);
   const viewMode = resolveHomeViewMode(searchParams.get('view'));
-  const displayedMarkets = useMemo<MarketWithStrings[]>(
-    () => selectMarketsForView(visibleMarkets, viewMode),
-    [viewMode, visibleMarkets],
+  const displayedMarkets = useMemo<MarketWithStrings[]>(() => searchFiltered, [searchFiltered]);
+  const viewDerived = useMemo(
+    () =>
+      deriveHomeViewMarkets({
+        displayedMarkets,
+        viewMode,
+        activeCategory: activeSubdivision,
+        categories: SUBDIVISIONS,
+        mapCategory: mapToSubdivision,
+      }),
+    [activeSubdivision, displayedMarkets, viewMode],
   );
+  const subdivisionCounts = viewDerived.categoryCounts;
+  const renderedMarkets = viewDerived.renderedMarkets;
 
   const tradingDisabled = tradingStatus.isLoading || !tradingStatus.data?.enabled;
 
@@ -562,7 +546,7 @@ function MarketsSection({
               </button>
             </div>
             <span className={`text-sm ${isDark ? 'text-slate-300' : 'text-slate-500'}`}>
-              {displayedMarkets.length} live markets
+              {renderedMarkets.length} live markets
             </span>
           </div>
         </div>
@@ -577,7 +561,7 @@ function MarketsSection({
               }`}
               onClick={() => setActiveSubdivision('All')}
             >
-              All ({searchFiltered.length})
+              All ({viewDerived.categorySourceMarkets.length})
             </button>
             {SUBDIVISIONS.map((sub) => {
               const count = subdivisionCounts[sub];
@@ -643,14 +627,14 @@ function MarketsSection({
           </p>
         )}
 
-        {!isLoading && !isError && displayedMarkets.length === 0 && (
+        {!isLoading && !isError && renderedMarkets.length === 0 && (
           <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
             No markets are currently available in this window.
           </p>
         )}
 
         <div className="grid gap-4 md:grid-cols-2">
-          {displayedMarkets.map((m) => (
+          {renderedMarkets.map((m) => (
             <MarketCard
               key={m.id}
               market={m as MarketWithStrings}
