@@ -21,6 +21,7 @@ import {
   parseSuggestedTradeFromSearchParams,
   type SuggestedTrade,
 } from '@/lib/polymarket/suggestedTrade';
+import { resolveHomeViewMode, selectMarketsForView } from '@/lib/highVolumeMarkets';
 
 type MarketWithStrings = Omit<MarketSummary, 'endDate' | 'closedTime'> & {
   endDate: string;
@@ -510,6 +511,11 @@ function MarketsSection({
     if (activeSubdivision === 'All') return searchFiltered;
     return searchFiltered.filter((m) => mapToSubdivision(m) === activeSubdivision);
   }, [activeSubdivision, searchFiltered]);
+  const viewMode = resolveHomeViewMode(searchParams.get('view'));
+  const displayedMarkets = useMemo<MarketWithStrings[]>(
+    () => selectMarketsForView(visibleMarkets, viewMode),
+    [viewMode, visibleMarkets],
+  );
 
   const tradingDisabled = tradingStatus.isLoading || !tradingStatus.data?.enabled;
 
@@ -556,7 +562,7 @@ function MarketsSection({
               </button>
             </div>
             <span className={`text-sm ${isDark ? 'text-slate-300' : 'text-slate-500'}`}>
-              {visibleMarkets.length} live markets
+              {displayedMarkets.length} live markets
             </span>
           </div>
         </div>
@@ -637,14 +643,14 @@ function MarketsSection({
           </p>
         )}
 
-        {!isLoading && !isError && visibleMarkets.length === 0 && (
+        {!isLoading && !isError && displayedMarkets.length === 0 && (
           <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
             No markets are currently available in this window.
           </p>
         )}
 
         <div className="grid gap-4 md:grid-cols-2">
-          {visibleMarkets.map((m) => (
+          {displayedMarkets.map((m) => (
             <MarketCard
               key={m.id}
               market={m as MarketWithStrings}

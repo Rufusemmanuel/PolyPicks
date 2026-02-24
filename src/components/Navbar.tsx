@@ -18,11 +18,7 @@ import {
   iconButtonDark,
   iconButtonLight,
 } from '@/lib/ui/classes';
-
-const navItems = [
-  { label: 'Markets', href: '/' as const, kind: 'link' as const },
-  { label: 'About', href: '#about', kind: 'anchor' as const },
-];
+import { navItems } from '@/lib/ui/navItems';
 
 export function Navbar() {
   const { isDark } = useTheme();
@@ -113,7 +109,11 @@ export function Navbar() {
   };
 
   const navLinkClass = (href: string) => {
-    const isActive = pathname === href;
+    const view = searchParams.get('view');
+    const isHighVolume = view === 'high-volume';
+    const isActive =
+      (href === '/' && pathname === '/' && !isHighVolume) ||
+      (href === '/?view=high-volume' && pathname === '/' && isHighVolume);
     return `rounded-full px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
       isActive
         ? isDark
