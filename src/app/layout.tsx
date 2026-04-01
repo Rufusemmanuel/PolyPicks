@@ -44,6 +44,10 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <meta name="color-scheme" content="dark light" />
+        <meta
+          name="talentapp:project_verification"
+          content="6e8de8366c7d569599ce0999af97e66f458bb8e5a269105876e49a891da52d9145ff82157c4f76bd9270771b1186abc9570c82ab6f4c4e586d63e59a79523fcb"
+        />
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body>
