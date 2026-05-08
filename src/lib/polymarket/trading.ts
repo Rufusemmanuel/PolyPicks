@@ -5,6 +5,7 @@ type TradingStatus = {
   tradingFlag: boolean;
   hasRuntimeConfig: boolean;
   missing: string[];
+  disabledReasons: string[];
 };
 
 const isEnabledFlag = (value: string | undefined) =>
@@ -18,11 +19,16 @@ export const resolveTradingStatus = (): TradingStatus => {
   if (!process.env.POLYPICKS_SESSION_SECRET) missing.push('POLYPICKS_SESSION_SECRET');
 
   const hasRuntimeConfig = missing.length === 0;
+  const disabledReasons = [
+    ...(!tradingFlag ? ['ENABLE_TRADING is not true'] : []),
+    ...missing.map((key) => `Missing ${key}`),
+  ];
 
   return {
     enabled: tradingFlag && hasRuntimeConfig,
     tradingFlag,
     hasRuntimeConfig,
     missing,
+    disabledReasons,
   };
 };

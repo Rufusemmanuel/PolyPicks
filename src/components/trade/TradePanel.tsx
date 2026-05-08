@@ -288,9 +288,40 @@ export function TradePanel({
   const marketPriceError =
     orderType === 'MARKET' ? marketPriceResult.error ?? null : null;
 
-  const canSubmit =
-    !tradingDisabled &&
-    !isSubmitting &&
+  const submitBlockers = useMemo(() => {
+    const blockers: string[] = [];
+    if (tradingStatus.isLoading) blockers.push('Trading status is loading.');
+    if (tradingStatus.isError) blockers.push('Unable to load trading status.');
+    if (tradingStatus.data && !tradingStatus.data.enabled) {
+      blockers.push(...(tradingStatus.data.disabledReasons?.length
+        ? tradingStatus.data.disabledReasons
+        : ['Trading is disabled.']));
+    }
+    if (sessionQuery.isLoading) blockers.push('User session is loading.');
+    if (isSubmitting) blockers.push('Order is already submitting.');
+    if (!tokenId) blockers.push('Select an outcome to trade.');
+    if (effectiveOrderPrice == null) blockers.push('No tradable price is available.');
+    if (calculatedSize == null || calculatedSize <= 0) blockers.push('Enter a valid order amount.');
+    if (sizeBelowMin) blockers.push(`Minimum size is ${minOrderSize}.`);
+    if (limitPriceInvalid) blockers.push('Enter a valid limit price.');
+    if (marketPriceError) blockers.push(marketPriceError);
+    return blockers;
+  }, [
+    calculatedSize,
+    effectiveOrderPrice,
+    isSubmitting,
+    limitPriceInvalid,
+    marketPriceError,
+    minOrderSize,
+    sessionQuery.isLoading,
+    sizeBelowMin,
+    tokenId,
+    tradingStatus.data,
+    tradingStatus.isError,
+    tradingStatus.isLoading,
+  ]);
+  const disabledReasonText = submitBlockers.join(' ');
+  const formReady =
     Boolean(tokenId) &&
     effectiveOrderPrice != null &&
     calculatedSize != null &&
@@ -298,6 +329,35 @@ export function TradePanel({
     !sizeBelowMin &&
     !limitPriceInvalid &&
     !marketPriceError;
+  const canSubmit =
+    !tradingDisabled &&
+    !isSubmitting &&
+    formReady;
+  const buttonDisabled = isSubmitting || !formReady;
+
+  useEffect(() => {
+    if (!submitBlockers.length) return;
+    console.info('[trade-ui]', {
+      event: 'trade_button_blocked',
+      blockers: submitBlockers,
+      tradingStatus: tradingStatus.data ?? null,
+      marketId,
+      tokenId,
+      orderType,
+      hasPrice: effectiveOrderPrice != null,
+      calculatedSize,
+      isSubmitting,
+    });
+  }, [
+    calculatedSize,
+    effectiveOrderPrice,
+    isSubmitting,
+    marketId,
+    orderType,
+    submitBlockers,
+    tokenId,
+    tradingStatus.data,
+  ]);
 
   const connectWallet = async () => {
     if (!provider) {
@@ -364,8 +424,28 @@ export function TradePanel({
       setMessage('Enter a valid limit price.');
       return;
     }
+    if (tradingStatus.isError) {
+      setMessage('Unable to verify trading status. Refresh and try again.');
+      return;
+    }
+    if (!tradingStatus.data?.enabled) {
+      const reason =
+        tradingStatus.data?.disabledReasons?.join(' ') ||
+        'Trading is disabled by server configuration.';
+      console.info('[trade-ui]', {
+        event: 'trade_click_blocked_by_trading_status',
+        reason,
+        tradingStatus: tradingStatus.data ?? null,
+      });
+      setMessage(`Trading unavailable. ${reason}`);
+      return;
+    }
     if (!canSubmit) {
-      setMessage('Complete the form before placing an order.');
+      console.info('[trade-ui]', {
+        event: 'trade_click_blocked',
+        blockers: submitBlockers,
+      });
+      setMessage(disabledReasonText || 'Complete the form before placing an order.');
       return;
     }
     if (!sessionQuery.data?.user) {
@@ -710,7 +790,9 @@ export function TradePanel({
       <button
         type="button"
         onClick={handleSubmit}
-        disabled={!canSubmit}
+        disabled={buttonDisabled}
+        title={disabledReasonText || undefined}
+        aria-disabled={!canSubmit}
         className={`${buttonPrimary} mt-4 w-full px-4 py-3 text-sm font-semibold ${
           !canSubmit ? 'opacity-60' : ''
         }`}

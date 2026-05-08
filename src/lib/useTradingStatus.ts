@@ -7,12 +7,17 @@ type TradingStatus = {
   tradingFlag: boolean;
   hasRuntimeConfig: boolean;
   missing: string[];
+  disabledReasons: string[];
 };
 
 const fetchTradingStatus = async (): Promise<TradingStatus> => {
-  const res = await fetch('/api/polymarket/trading-status');
-  if (!res.ok) throw new Error('Unable to load trading status');
-  return (await res.json()) as TradingStatus;
+  const res = await fetch('/api/polymarket/trading-status', {
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+  });
+  const data = (await res.json().catch(() => null)) as TradingStatus | null;
+  if (!res.ok || !data) throw new Error('Unable to load trading status');
+  return data;
 };
 
 export const useTradingStatus = () =>
