@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 type TradingStatus = {
   enabled: boolean;
   tradingFlag: boolean;
-  hasBuilderKeys: boolean;
+  hasRuntimeConfig: boolean;
   missing: string[];
 };
 

@@ -1,23 +1,27 @@
-const sampleNumericSide = {
+const builderCode =
+  process.env.POLYMARKET_BUILDER_CODE ??
+  '0x1111111111111111111111111111111111111111111111111111111111111111';
+
+const sampleOrder = {
   tradeMode: 'market',
   execution: 'FOK',
   tokenId: '5863',
-  side: 0,
+  side: 'BUY',
   signatureType: 2,
   funderAddress: '0x0000000000000000000000000000000000000000',
   order: {
     salt: '1',
     maker: '0x0000000000000000000000000000000000000000',
     signer: '0x0000000000000000000000000000000000000000',
-    taker: '0x0000000000000000000000000000000000000000',
     tokenId: '5863',
     makerAmount: '1',
     takerAmount: '1',
-    expiration: '0',
-    nonce: '1',
-    feeRateBps: '0',
-    side: 0,
+    side: 'BUY',
     signatureType: 2,
+    timestamp: '1700000000',
+    expiration: '0',
+    metadata: '0x0000000000000000000000000000000000000000000000000000000000000000',
+    builder: builderCode,
     signature: '0x' + '0'.repeat(130),
   },
 };
@@ -26,15 +30,7 @@ const url = process.env.ORDER_TEST_URL ?? 'http://localhost:3000/api/polymarket/
 
 try {
   const variants = [
-    { label: 'numeric-side', payload: sampleNumericSide },
-    {
-      label: 'string-side',
-      payload: {
-        ...sampleNumericSide,
-        side: 'BUY',
-        order: { ...sampleNumericSide.order, side: 'BUY' },
-      },
-    },
+    { label: 'v2-builder-attributed', payload: sampleOrder },
   ];
 
   for (const variant of variants) {

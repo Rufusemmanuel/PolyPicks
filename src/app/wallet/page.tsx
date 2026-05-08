@@ -7,7 +7,7 @@ import { polygon } from 'viem/chains';
 import { formatDistanceToNow } from 'date-fns';
 import type { RelayClient } from '@polymarket/builder-relayer-client';
 import { RelayerTransactionState } from '@polymarket/builder-relayer-client';
-import { getContractConfig } from '@polymarket/clob-client';
+import { getContractConfig } from '@polymarket/clob-client-v2';
 import { useTheme } from '@/components/theme-context';
 import { useInjectedWallet } from '@/hooks/useInjectedWallet';
 import {

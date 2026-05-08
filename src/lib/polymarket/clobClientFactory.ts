@@ -1,6 +1,10 @@
-import { ClobClient, Chain, type ApiKeyCreds } from '@polymarket/clob-client';
-import type { BuilderConfig } from '@polymarket/builder-signing-sdk';
-import type { SignatureType } from '@polymarket/order-utils';
+import {
+  ClobClient,
+  Chain,
+  type ApiKeyCreds,
+  type BuilderConfig,
+  type SignatureTypeV2,
+} from '@polymarket/clob-client-v2';
 import type { ViemSigner } from '@/lib/wallet/viemSigner';
 
 type UserApiCreds = {
@@ -12,7 +16,7 @@ type UserApiCreds = {
 type ClobClientFactoryArgs = {
   signer?: ViemSigner | null;
   userApiCreds?: UserApiCreds | null;
-  signatureType?: SignatureType;
+  signatureType?: SignatureTypeV2;
   proxyWalletAddress?: string | null;
   chainId?: Chain;
   host?: string;
@@ -36,15 +40,14 @@ export const createClobClient = ({
       }
     : undefined;
 
-  return new ClobClient(
+  return new ClobClient({
     host,
-    chainId,
-    signer ? (signer as unknown as ConstructorParameters<typeof ClobClient>[2]) : undefined,
+    chain: chainId,
+    signer: signer ? (signer as unknown as NonNullable<ConstructorParameters<typeof ClobClient>[0]['signer']>) : undefined,
     creds,
     signatureType,
-    proxyWalletAddress ?? undefined,
-    undefined,
-    undefined,
+    funderAddress: proxyWalletAddress ?? undefined,
     builderConfig,
-  );
+    retryOnError: true,
+  });
 };

@@ -17,14 +17,15 @@
     "test:order-payload": "node scripts/dev-test-order-payload.mjs",
     "test:buy-order": "tsx scripts/test-buy-order.ts",
     "test:proxy-wallet": "tsx scripts/test-proxy-wallet.ts",
+    "verify:builder-attribution": "tsx scripts/verify-builder-attribution.ts",
+    "verify:live-attribution": "tsx scripts/live-attribution-e2e.ts",
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy"
   },
   "dependencies": {
     "@polymarket/builder-relayer-client": "^0.0.8",
-    "@polymarket/builder-signing-sdk": "^0.0.8",
-    "@polymarket/clob-client": "^5.1.3",
+    "@polymarket/clob-client-v2": "^1.0.5",
     "@prisma/client": "5.20.0",
     "@react-pdf/renderer": "^4.3.2",
     "@tanstack/react-query": "5.66.6",
@@ -41,7 +42,7 @@
     "prisma": "5.20.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "viem": "^2.43.5",
+    "viem": "^2.46.3",
     "ws": "8.18.0",
     "zod": "^4.3.5"
   },

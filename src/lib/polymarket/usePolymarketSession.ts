@@ -7,7 +7,7 @@ import {
   RelayerTxType,
   RelayerTransactionState,
 } from '@polymarket/builder-relayer-client';
-import { getContractConfig } from '@polymarket/clob-client';
+import { getContractConfig } from '@polymarket/clob-client-v2';
 import {
   createRelayClient,
   deploySafeIfNeeded,

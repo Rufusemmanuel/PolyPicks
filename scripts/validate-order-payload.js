@@ -27,13 +27,13 @@ if (!payload || typeof payload !== 'object') {
   [
     'maker',
     'signer',
-    'taker',
     'tokenId',
     'makerAmount',
     'takerAmount',
+    'timestamp',
     'expiration',
-    'nonce',
-    'feeRateBps',
+    'metadata',
+    'builder',
   ].forEach((key) => {
     if (typeof order[key] !== 'string') errors.push(`order.${key}`);
   });
@@ -49,7 +49,7 @@ if (!payload || typeof payload !== 'object') {
   if (typeof order.signature !== 'string' || !order.signature.startsWith('0x')) {
     errors.push('order.signature');
   }
-  if (typeof order.side !== 'number') errors.push('order.side');
+  if (order.side !== 'BUY' && order.side !== 'SELL') errors.push('order.side');
   if (typeof order.signatureType !== 'number') errors.push('order.signatureType');
 }
 

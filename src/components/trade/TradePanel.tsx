@@ -7,7 +7,7 @@ import {
   OrderType,
   Side,
   getContractConfig as getClobContractConfig,
-} from '@polymarket/clob-client';
+} from '@polymarket/clob-client-v2';
 import { useTheme } from '@/components/theme-context';
 import { useTradingStatus } from '@/lib/useTradingStatus';
 import { useSession } from '@/lib/useSession';

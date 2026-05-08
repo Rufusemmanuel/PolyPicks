@@ -1,5 +1,4 @@
 import { RelayClient, RelayerTxType } from '@polymarket/builder-relayer-client';
-import { BuilderConfig } from '@polymarket/builder-signing-sdk';
 import type { WalletClient } from 'viem';
 import { ensureTradingSession } from '@/lib/polymarket/tradeService';
 import { createViemSigner } from '@/lib/wallet/viemSigner';
@@ -8,19 +7,7 @@ const DEFAULT_RELAYER_URL = 'https://relayer-v2.polymarket.com/';
 const RELAYER_ENV_URL = process.env.NEXT_PUBLIC_POLY_RELAYER_URL;
 const CHAIN_ID = 137;
 const STORAGE_PREFIX = 'polymarket:safe:';
-const REMOTE_SIGN_PATH = '/api/polymarket/sign';
 const SESSION_PREFIX = 'polymarket:relayer-session:';
-
-const getRemoteSigningUrl = () => {
-  const envBase = process.env.NEXT_PUBLIC_APP_URL;
-  if (envBase && /^https?:\/\//.test(envBase)) {
-    return `${envBase.replace(/\/$/, '')}${REMOTE_SIGN_PATH}`;
-  }
-  if (typeof window !== 'undefined' && window.location?.origin) {
-    return `${window.location.origin}${REMOTE_SIGN_PATH}`;
-  }
-  return `http://localhost:3000${REMOTE_SIGN_PATH}`;
-};
 
 const getRelayerUrl = () => {
   if (RELAYER_ENV_URL && /^https?:\/\//.test(RELAYER_ENV_URL)) {
@@ -28,13 +15,6 @@ const getRelayerUrl = () => {
   }
   return DEFAULT_RELAYER_URL;
 };
-
-const getBuilderConfig = () =>
-  new BuilderConfig({
-    remoteBuilderConfig: {
-      url: getRemoteSigningUrl(),
-    },
-  });
 
 const storageKey = (address: string) => `${STORAGE_PREFIX}${address.toLowerCase()}`;
 
@@ -56,7 +36,7 @@ export const createRelayClient = (
     getRelayerUrl(),
     CHAIN_ID,
     walletClient,
-    getBuilderConfig(),
+    undefined,
     txType,
   );
 };

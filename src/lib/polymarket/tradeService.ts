@@ -5,8 +5,12 @@ import {
   OrderType,
   Side,
   createL1Headers,
-} from '@polymarket/clob-client';
+} from '@polymarket/clob-client-v2';
 import { normalizeSignedOrder } from '@/lib/polymarket/normalizeSignedOrder';
+import {
+  assertBuilderCodeReady,
+  assertSignedOrderBuilder,
+} from '@/lib/polymarket/assertBuilderAttribution';
 import { createClobClient } from './clobClientFactory';
 import { TRADE_CONFIG } from './tradeConfig';
 import type { ViemSigner } from '@/lib/wallet/viemSigner';
@@ -45,6 +49,18 @@ const safeJson = async <T,>(res: Response): Promise<T | null> => {
   } catch {
     return null;
   }
+};
+
+const fetchBuilderCode = async () => {
+  const res = await fetch('/api/polymarket/config', {
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+  });
+  const data = await safeJson<{ ok?: boolean; builderCode?: string; error?: string }>(res);
+  if (!res.ok || !data?.ok || !data.builderCode) {
+    throw new Error(data?.error ?? 'Polymarket builder code is not configured.');
+  }
+  return assertBuilderCodeReady(data.builderCode);
 };
 
 export const ensureTradingSession = async (
@@ -89,11 +105,14 @@ export const createAndPostOrder = async ({
 }: CreateAndPostArgs): Promise<OrderResponse> => {
   let execution = executionInput;
   await ensureTradingSession(signer);
+  const builderCode = await fetchBuilderCode();
+  assertBuilderCodeReady(builderCode);
   const clobClient = createClobClient({
     signer,
     signatureType,
     proxyWalletAddress: funderAddress,
     host: TRADE_CONFIG.clobHost,
+    builderConfig: { builderCode },
   });
 
   const tickSizeValue =
@@ -143,6 +162,7 @@ export const createAndPostOrder = async ({
         side,
         price,
         amount: amount ?? 0,
+        builderCode,
         orderType:
           execution === OrderType.FOK || execution === OrderType.FAK
             ? execution
@@ -154,12 +174,22 @@ export const createAndPostOrder = async ({
           side,
           price,
           size: size ?? 0,
+          builderCode,
           ...(expiration ? { expiration } : {}),
         },
         { tickSize: tickSizeValue, negRisk: negRiskValue },
       );
 
   const normalized = normalizeSignedOrder(signedOrder);
+  assertSignedOrderBuilder(normalized.builder, builderCode);
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[polymarket] signed order attribution', {
+      builderCode,
+      finalBuilder: normalized.builder,
+      orderType: execution,
+      tradeMode,
+    });
+  }
   const res = await fetch('/api/polymarket/order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

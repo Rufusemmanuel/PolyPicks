@@ -3,7 +3,7 @@ import 'server-only';
 type TradingStatus = {
   enabled: boolean;
   tradingFlag: boolean;
-  hasBuilderKeys: boolean;
+  hasRuntimeConfig: boolean;
   missing: string[];
 };
 
@@ -14,16 +14,15 @@ export const resolveTradingStatus = (): TradingStatus => {
   const tradingFlag = isEnabledFlag(process.env.ENABLE_TRADING);
   const missing: string[] = [];
 
-  if (!process.env.POLY_BUILDER_API_KEY) missing.push('POLY_BUILDER_API_KEY');
-  if (!process.env.POLY_BUILDER_SECRET) missing.push('POLY_BUILDER_SECRET');
-  if (!process.env.POLY_BUILDER_PASSPHRASE) missing.push('POLY_BUILDER_PASSPHRASE');
+  if (!process.env.POLYMARKET_BUILDER_CODE) missing.push('POLYMARKET_BUILDER_CODE');
+  if (!process.env.POLYPICKS_SESSION_SECRET) missing.push('POLYPICKS_SESSION_SECRET');
 
-  const hasBuilderKeys = missing.length === 0;
+  const hasRuntimeConfig = missing.length === 0;
 
   return {
-    enabled: tradingFlag && hasBuilderKeys,
+    enabled: tradingFlag && hasRuntimeConfig,
     tradingFlag,
-    hasBuilderKeys,
+    hasRuntimeConfig,
     missing,
   };
 };

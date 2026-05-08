@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { OrderBookSummary } from '@polymarket/clob-client';
+import type { OrderBookSummary } from '@polymarket/clob-client-v2';
 import { createClobClient } from './clobClientFactory';
 import { TRADE_CONFIG } from './tradeConfig';
 

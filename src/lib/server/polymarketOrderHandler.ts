@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { PolymarketSessionData } from './session';
 import { sanitizeOrderPayload } from './polymarketOrderCore';
 import type { buildL2Headers as buildL2HeadersType } from './polymarketHeaders';
+import { getPolymarketBuilderCode } from './polymarketRuntimeConfig';
 
 type SessionLike = PolymarketSessionData & { destroy?: () => void };
 
@@ -9,22 +10,37 @@ type OrderHandlerDeps = {
   getSession: () => Promise<SessionLike>;
   isSessionExpired: (session: PolymarketSessionData) => boolean;
   buildL2Headers: typeof buildL2HeadersType;
-  getBuilderHeaders?: (args: {
-    method: string;
-    path: string;
-    body: string;
-    request: Request;
-  }) => Promise<Record<string, string> | undefined>;
   clobHost: string;
   fetchImpl?: typeof fetch;
   logger?: Pick<Console, 'info' | 'error'>;
 };
 
-const ORDER_TYPES = new Set(['FOK', 'GTC', 'GTD']);
+const ORDER_TYPES = new Set(['FAK', 'FOK', 'GTC', 'GTD']);
+const logOrderEvent = (
+  logger: Pick<Console, 'info' | 'error'>,
+  level: 'info' | 'error',
+  event: string,
+  fields: Record<string, unknown> = {},
+) => {
+  logger[level]('[polymarket]', {
+    event,
+    component: 'order_submission',
+    ...fields,
+  });
+};
 const redactSignature = (value: unknown) => {
   if (typeof value !== 'string') return value;
   if (!value.startsWith('0x')) return value;
   return `${value.slice(0, 10)}...`;
+};
+const redactOrderPayload = (payload: unknown) => {
+  if (!payload || typeof payload !== 'object') return payload;
+  const copy = structuredClone(payload) as Record<string, unknown>;
+  if (copy.order && typeof copy.order === 'object') {
+    const order = copy.order as Record<string, unknown>;
+    order.signature = redactSignature(order.signature);
+  }
+  return copy;
 };
 const isNegativeNumeric = (value: unknown) => {
   if (typeof value === 'number') return value < 0;
@@ -59,7 +75,6 @@ export const createOrderHandler = ({
   getSession,
   isSessionExpired,
   buildL2Headers,
-  getBuilderHeaders,
   clobHost,
   fetchImpl,
   logger = console,
@@ -98,7 +113,9 @@ export const createOrderHandler = ({
     try {
       payload = JSON.parse(rawBody) as Record<string, unknown>;
     } catch (error) {
-      logger.error('[polymarket] order payload parse failed', error);
+      logOrderEvent(logger, 'error', 'order_payload_parse_failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return NextResponse.json(
         { ok: false, error: 'Invalid request', details: { message: 'Malformed JSON' } },
         { status: 400, headers: { 'Cache-Control': 'no-store' } },
@@ -120,9 +137,13 @@ export const createOrderHandler = ({
     const orderIn = (orderRaw ?? {}) as Record<string, unknown>;
     if (!orderIn.signature) missing.push('order.signature');
     if (orderIn.signatureType == null) missing.push('order.signatureType');
+    if (!orderIn.timestamp) missing.push('order.timestamp');
+    if (!orderIn.metadata) missing.push('order.metadata');
+    if (!orderIn.builder) missing.push('order.builder');
     const tokenIdValue = orderIn.tokenId ?? orderIn.tokenID;
     if (tokenIdValue == null) missing.push('order.tokenId');
     if (missing.length) {
+      logOrderEvent(logger, 'error', 'order_payload_missing_fields', { missing });
       return NextResponse.json(
         { ok: false, error: 'Invalid request', details: { missing } },
         { status: 400, headers: { 'Cache-Control': 'no-store' } },
@@ -150,11 +171,11 @@ export const createOrderHandler = ({
       sideValue = String(rawSide);
     } else if (typeof rawSide === 'string') {
       const normalized = rawSide.trim().toLowerCase();
-      if (normalized === 'buy') sideValue = '0';
-      else if (normalized === 'sell') sideValue = '1';
+      if (normalized === 'buy') sideValue = 'BUY';
+      else if (normalized === 'sell') sideValue = 'SELL';
       else sideValue = rawSide;
     }
-    if (sideValue === '1' || rawSide === 1 || rawSide === '1') {
+    if (sideValue === 'SELL' || sideValue === '1' || rawSide === 1 || rawSide === '1') {
       return NextResponse.json(
         { code: 'SELL_DISABLED', message: 'Sell is disabled on this platform.' },
         { status: 400, headers: { 'Cache-Control': 'no-store' } },
@@ -167,14 +188,27 @@ export const createOrderHandler = ({
       salt: saltInt,
       makerAmount: String(orderIn.makerAmount),
       takerAmount: String(orderIn.takerAmount),
-      expiration: String(orderIn.expiration),
-      nonce: String(orderIn.nonce),
-      feeRateBps:
-        typeof orderIn.feeRateBps === 'number' ? String(orderIn.feeRateBps) : orderIn.feeRateBps,
       side: sideValue,
       signatureType: Number(orderIn.signatureType),
+      timestamp: String(orderIn.timestamp),
+      expiration: String(orderIn.expiration),
+      metadata: String(orderIn.metadata),
+      builder: String(orderIn.builder),
       signature: orderIn.signature,
     };
+
+    const builderCode = getPolymarketBuilderCode();
+    if (String(normalizedOrder.builder).toLowerCase() !== builderCode.toLowerCase()) {
+      logOrderEvent(logger, 'error', 'builder_code_mismatch', {
+        expectedBuilder: builderCode,
+        receivedBuilder: normalizedOrder.builder,
+        tokenIdPrefix: String(normalizedOrder.tokenId ?? '').slice(0, 12),
+      });
+      return NextResponse.json(
+        { ok: false, error: 'Order builder code mismatch.' },
+        { status: 400, headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
 
     const execution = (payload.orderType ?? payload.execution ?? 'FOK').toString().toUpperCase();
     if (!ORDER_TYPES.has(execution)) {
@@ -213,10 +247,13 @@ export const createOrderHandler = ({
 
     try {
       sanitizeOrderPayload({
-        orderType: execution as 'FOK' | 'GTC' | 'GTD',
+        orderType: execution as 'FAK' | 'FOK' | 'GTC' | 'GTD',
         order: normalizedOrder as Record<string, unknown>,
       });
     } catch (error) {
+      logOrderEvent(logger, 'error', 'order_payload_serialization_failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return NextResponse.json(
         {
           ok: false,
@@ -235,16 +272,16 @@ export const createOrderHandler = ({
       order: {
         maker: normalizedOrder.maker,
         signer: normalizedOrder.signer,
-        taker: normalizedOrder.taker,
         tokenId: normalizedOrder.tokenId,
         salt: normalizedOrder.salt,
         makerAmount: normalizedOrder.makerAmount,
         takerAmount: normalizedOrder.takerAmount,
-        expiration: normalizedOrder.expiration,
-        nonce: normalizedOrder.nonce,
-        feeRateBps: normalizedOrder.feeRateBps,
         side: normalizedOrder.side,
         signatureType: normalizedOrder.signatureType,
+        timestamp: normalizedOrder.timestamp,
+        expiration: normalizedOrder.expiration,
+        metadata: normalizedOrder.metadata,
+        builder: normalizedOrder.builder,
         signature: normalizedOrder.signature,
       },
       owner: session.l2.apiKey,
@@ -255,6 +292,7 @@ export const createOrderHandler = ({
       side: orderPayload.order.side,
       salt: orderPayload.order.salt,
       tokenIdPrefix: String(orderPayload.order.tokenId ?? '').slice(0, 8),
+      builderCode: orderPayload.order.builder,
     };
 
     const requestPath = '/order';
@@ -265,21 +303,22 @@ export const createOrderHandler = ({
         requestPath,
         body,
       });
-      const builderHeaders = getBuilderHeaders
-        ? await getBuilderHeaders({ method: 'POST', path: requestPath, body, request })
-        : undefined;
       const headers = {
         'Content-Type': 'application/json',
         ...l2Headers,
-        ...(builderHeaders ?? {}),
       };
 
-      if (process.env.NODE_ENV !== 'production') {
-        logger.info('[polymarket] order payload keys', {
-          orderKeys: Object.keys(orderPayload.order ?? {}),
-          orderType: orderPayload.orderType,
-          saltType: typeof orderPayload.order?.salt,
-          sideType: typeof orderPayload.order?.side,
+      logOrderEvent(logger, 'info', 'order_submission_started', {
+        orderKeys: Object.keys(orderPayload.order ?? {}),
+        orderType: orderPayload.orderType,
+        side: orderPayload.order?.side,
+        tokenIdPrefix: String(orderPayload.order?.tokenId ?? '').slice(0, 12),
+        builderCode: orderPayload.order?.builder,
+        hasBuilder: Boolean(orderPayload.order?.builder),
+      });
+      if (process.env.POLYMARKET_ORDER_DEBUG === '1') {
+        logOrderEvent(logger, 'info', 'final_order_payload_debug', {
+          payload: redactOrderPayload(orderPayload),
         });
       }
 
@@ -344,15 +383,22 @@ export const createOrderHandler = ({
         );
       }
 
-      if (process.env.NODE_ENV !== 'production') {
-        logger.info('[polymarket] order response status', res.status);
-      }
+      logOrderEvent(logger, 'info', 'order_response_status', {
+        status: res.status,
+        builderCode: orderPayload.order.builder,
+      });
 
       const contentType = res.headers.get('content-type') ?? '';
       const cfRay = res.headers.get('cf-ray') ?? null;
       const looksLikeHtml = contentType.includes('text/html') || /<html/i.test(text);
       const looksLikeCloudflare = Boolean(cfRay) || text.toLowerCase().includes('cloudflare');
       if (looksLikeHtml || (looksLikeCloudflare && !contentType.includes('application/json'))) {
+        logOrderEvent(logger, 'error', 'exchange_non_json_response', {
+          status: res.status,
+          contentType,
+          cfRay,
+          sent: sentDebug,
+        });
         return NextResponse.json(
           {
             ok: false,
@@ -374,6 +420,12 @@ export const createOrderHandler = ({
         try {
           data = JSON.parse(text);
         } catch {
+          logOrderEvent(logger, 'error', 'exchange_json_parse_failed', {
+            status: res.status,
+            contentType,
+            cfRay,
+            sent: sentDebug,
+          });
           return NextResponse.json(
             {
               ok: false,
@@ -392,6 +444,11 @@ export const createOrderHandler = ({
       }
 
       if (!res.ok) {
+        logOrderEvent(logger, 'error', 'exchange_http_rejection', {
+          status: res.status,
+          body: data ?? null,
+          sent: sentDebug,
+        });
         return NextResponse.json(
           {
             ok: false,
@@ -405,18 +462,22 @@ export const createOrderHandler = ({
           { status: 502, headers: { 'Cache-Control': 'no-store' } },
         );
       }
-      if (process.env.NODE_ENV !== 'production') {
-        const redacted = data && typeof data === 'object'
-          ? { ...data, signature: redactSignature((data as { signature?: unknown }).signature) }
-          : data;
-        logger.info('[polymarket] order response', redacted ?? null);
-      }
+      const redacted = data && typeof data === 'object'
+        ? { ...data, signature: redactSignature((data as { signature?: unknown }).signature) }
+        : data;
+      logOrderEvent(logger, 'info', 'order_response_body', {
+        response: redacted ?? null,
+      });
       if (
         data
         && typeof data === 'object'
         && 'success' in data
         && (data as { success?: unknown }).success === false
       ) {
+        logOrderEvent(logger, 'error', 'exchange_business_rejection', {
+          body: data,
+          sent: sentDebug,
+        });
         return NextResponse.json(
           {
             ok: false,
@@ -431,7 +492,9 @@ export const createOrderHandler = ({
         headers: { 'Cache-Control': 'no-store' },
       });
     } catch (error) {
-      logger.error('[polymarket] order post failed', error);
+      logOrderEvent(logger, 'error', 'order_post_failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return NextResponse.json(
         { ok: false, error: 'CLOB error' },
         { status: 502, headers: { 'Cache-Control': 'no-store' } },

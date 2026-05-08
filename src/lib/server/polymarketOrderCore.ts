@@ -4,15 +4,15 @@ type SanitizedOrder = {
   salt: number;
   maker: string;
   signer: string;
-  taker: string;
   tokenId: string;
   makerAmount: string;
   takerAmount: string;
-  expiration: string;
-  nonce: string;
-  feeRateBps: string;
-  side: '0' | '1';
+  side: 'BUY' | 'SELL';
   signatureType: number;
+  timestamp: string;
+  expiration: string;
+  metadata: string;
+  builder: string;
   signature: string;
 };
 
@@ -24,6 +24,7 @@ type SanitizedOrderPayload = {
 
 const ORDER_TYPES = new Set<OrderType>(['FAK', 'FOK', 'GTC', 'GTD']);
 const NUMERIC_RE = /^\d+$/;
+const BYTES32_RE = /^0x[0-9a-fA-F]{64}$/;
 
 const requireString = (value: unknown, label: string) => {
   if (typeof value !== 'string' || !value.trim()) {
@@ -65,13 +66,9 @@ const requireSalt = (value: unknown) => {
 };
 
 const requireSide = (value: unknown) => {
-  if (typeof value === 'number' && (value === 0 || value === 1)) {
-    return value === 0 ? '0' : '1';
-  }
-  if (typeof value === 'string' && (value === '0' || value === '1')) {
-    return value;
-  }
-  throw new Error('order.side must be "0" or "1".');
+  if (value === 'BUY' || value === '0' || value === 0) return 'BUY';
+  if (value === 'SELL' || value === '1' || value === 1) return 'SELL';
+  throw new Error('order.side must be BUY or SELL.');
 };
 
 const requireSignatureType = (value: unknown) => {
@@ -82,6 +79,13 @@ const requireSignatureType = (value: unknown) => {
     return Number(value);
   }
   throw new Error('order.signatureType must be an integer.');
+};
+
+const requireBytes32 = (value: unknown, label: string) => {
+  if (typeof value !== 'string' || !BYTES32_RE.test(value)) {
+    throw new Error(`${label} must be a bytes32 hex string.`);
+  }
+  return value;
 };
 
 export const sanitizeOrderPayload = (payload: Record<string, unknown>): SanitizedOrderPayload => {
@@ -109,15 +113,15 @@ export const sanitizeOrderPayload = (payload: Record<string, unknown>): Sanitize
     salt: requireSalt(order.salt),
     maker: requireString(order.maker, 'order.maker'),
     signer: requireString(order.signer, 'order.signer'),
-    taker: requireString(order.taker, 'order.taker'),
     tokenId: requireNumericString(order.tokenId, 'order.tokenId'),
     makerAmount: requirePositiveAmount(order.makerAmount, 'order.makerAmount'),
     takerAmount: requirePositiveAmount(order.takerAmount, 'order.takerAmount'),
-    expiration,
-    nonce: requireNumericString(order.nonce, 'order.nonce'),
-    feeRateBps: requireNumericString(order.feeRateBps, 'order.feeRateBps'),
     side: requireSide(order.side),
     signatureType: requireSignatureType(order.signatureType),
+    timestamp: requireNumericString(order.timestamp, 'order.timestamp'),
+    expiration,
+    metadata: requireBytes32(order.metadata, 'order.metadata'),
+    builder: requireBytes32(order.builder, 'order.builder'),
     signature: requireString(order.signature, 'order.signature'),
   };
 

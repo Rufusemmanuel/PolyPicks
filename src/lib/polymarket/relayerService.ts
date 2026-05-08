@@ -1,6 +1,7 @@
 import { RelayClient, RelayerTxType } from '@polymarket/builder-relayer-client';
-import type { BuilderConfig } from '@polymarket/builder-signing-sdk';
 import type { WalletClient } from 'viem';
+
+type BuilderConfig = ConstructorParameters<typeof RelayClient>[3];
 
 type RelayerService = {
   relayClient: RelayClient;

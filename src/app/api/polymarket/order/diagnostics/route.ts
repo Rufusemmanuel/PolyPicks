@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getSession, isSessionExpired } from '@/lib/server/session';
 import { buildL2Headers } from '@/lib/server/polymarketHeaders';
 import { sanitizeOrderPayload } from '@/lib/server/polymarketOrder';
+import { getPolymarketBuilderCode } from '@/lib/server/polymarketRuntimeConfig';
 
 export const runtime = 'nodejs';
 
@@ -57,6 +58,13 @@ export async function POST(request: NextRequest) {
       { status: 400, headers: { 'Cache-Control': 'no-store' } },
     );
   }
+  const builderCode = getPolymarketBuilderCode();
+  if (sanitized.order.builder.toLowerCase() !== builderCode.toLowerCase()) {
+    return NextResponse.json(
+      { ok: false, error: 'Order builder code mismatch.' },
+      { status: 400, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
 
   const outgoingPayload = {
     order: sanitized.order,
@@ -72,6 +80,7 @@ export async function POST(request: NextRequest) {
     orderKeys: Object.keys(outgoingPayload.order),
     orderKeyTypes,
     owner: `${session.l2.apiKey.slice(0, 6)}...`,
+    builderCode: sanitized.order.builder,
   });
 
   const l2Headers = await buildL2Headers(session, {

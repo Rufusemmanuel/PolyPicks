@@ -7,10 +7,14 @@ Next.js 14 + Prisma dashboard for Polymarket markets.
 - Set `DATABASE_URL` to a Postgres connection string (required in all environments).
 - Copy `.env.example` to `.env` and update:
   - `DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB?sslmode=require"`
-- Set Polymarket builder creds in `.env.local` (never NEXT_PUBLIC):
-  - `POLY_BUILDER_API_KEY=...`
-  - `POLY_BUILDER_SECRET=...`
-  - `POLY_BUILDER_PASSPHRASE=...`
+- Set user-wallet trading config in `.env.local` or deployment env:
+  - `ENABLE_TRADING=true`
+  - `POLYMARKET_BUILDER_CODE=0x...`
+  - `POLYPICKS_SESSION_SECRET=...` (32+ chars)
+- Do not set `POLYMARKET_PRIVATE_KEY` for normal trading. Users sign orders from connected wallets.
+- Optional admin/reporting credentials:
+  - `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, and `POLYMARKET_PASSPHRASE` are only used by builder analytics/reporting utilities.
+  - `POLYMARKET_PRIVATE_KEY` is only used by local live-attribution/admin scripts.
 - Optional client flags:
   - `NEXT_PUBLIC_CLOB_DEBUG=false`
   - `NEXT_PUBLIC_FORCE_EOA=false`
@@ -27,7 +31,8 @@ Next.js 14 + Prisma dashboard for Polymarket markets.
   - `vercel-build` runs migrations only when `VERCEL_ENV=production`.
   - Optional: set `ALLOW_DB_RESET_ON_FAILED_MIGRATIONS=1` to auto-reset a fresh database on failed migrations.
 - Do not run `prisma db pull` against production; it can overwrite `prisma/schema.prisma` and drop models that are not yet present in the database.
+- For user-wallet trading deployments, the required trading runtime vars are only `ENABLE_TRADING=true`, `POLYMARKET_BUILDER_CODE`, and `POLYPICKS_SESSION_SECRET`. Server-side Polymarket API credentials and private keys are optional admin/reporting inputs, not trading blockers.
 
 The app uses the Polymarket Gamma/Data API and an optional RTDS WebSocket for live prices.
 
-Builder-attributed trading relies on the exact `clobBody` string used to compute `POLY_SIGNATURE`; the same string must be forwarded to the server unchanged.
+Builder-attributed trading uses CLOB V2 `builderCode`. The browser fetches the server-configured bytes32 code before signing, the SDK serializes it into the final order `builder` field, and the server rejects posts where that field is missing or mismatched.

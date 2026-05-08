@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { getAddress, isAddress } from 'viem';
 
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+export const ZERO_BYTES32 =
+  '0x0000000000000000000000000000000000000000000000000000000000000000';
 
 const DECIMAL_STRING_RE = /^[0-9]+$/;
 const HEX_STRING_RE = /^0x[0-9a-fA-F]+$/;
@@ -24,23 +26,20 @@ export const SignedOrderSchema = z.object({
   salt: decimalStringSchema,
   maker: addressSchema,
   signer: addressSchema,
-  taker: addressSchema,
   tokenId: decimalStringSchema,
   makerAmount: decimalStringSchema,
   takerAmount: decimalStringSchema,
-  expiration: decimalStringSchema,
-  nonce: decimalStringSchema,
-  feeRateBps: decimalStringSchema,
   side: z
-    .number()
-    .int()
-    .min(0, 'Side must be >= 0.')
-    .max(1, 'Side must be <= 1.'),
+    .enum(['BUY', 'SELL']),
   signatureType: z
     .number()
     .int()
     .min(0, 'SignatureType must be >= 0.')
     .max(255, 'SignatureType must be <= 255.'),
+  timestamp: decimalStringSchema,
+  expiration: decimalStringSchema,
+  metadata: z.string().regex(/^0x[0-9a-fA-F]{64}$/, 'metadata must be bytes32.'),
+  builder: z.string().regex(/^0x[0-9a-fA-F]{64}$/, 'builder must be bytes32.'),
   signature: signatureSchema,
 });
 
@@ -148,6 +147,19 @@ const toNumber = (value: unknown, field: string) => {
   throw new Error(`${field} must be a numeric value.`);
 };
 
+const normalizeSide = (value: unknown) => {
+  if (value === 'BUY' || value === '0' || value === 0) return 'BUY';
+  if (value === 'SELL' || value === '1' || value === 1) return 'SELL';
+  throw new Error('side must be BUY or SELL.');
+};
+
+const normalizeBytes32 = (value: unknown, field: string) => {
+  if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error(`${field} must be a bytes32 hex string.`);
+  }
+  return value;
+};
+
 export const normalizeSignedOrder = (input: unknown): NormalizedSignedOrder => {
   if (!input || typeof input !== 'object') {
     throw new Error('Signed order must be an object.');
@@ -158,18 +170,15 @@ export const normalizeSignedOrder = (input: unknown): NormalizedSignedOrder => {
     salt: toDecimalString(raw.salt, 'salt'),
     maker: normalizeAddress(raw.maker, 'maker'),
     signer: normalizeAddress(raw.signer, 'signer'),
-    taker: normalizeAddress(
-      typeof raw.taker === 'string' && raw.taker.trim() ? raw.taker : ZERO_ADDRESS,
-      'taker',
-    ),
     tokenId: toDecimalString(tokenIdRaw, 'tokenId'),
     makerAmount: toDecimalString(raw.makerAmount, 'makerAmount'),
     takerAmount: toDecimalString(raw.takerAmount, 'takerAmount'),
-    expiration: toDecimalString(raw.expiration, 'expiration'),
-    nonce: toDecimalString(raw.nonce, 'nonce'),
-    feeRateBps: toDecimalString(raw.feeRateBps, 'feeRateBps'),
-    side: toNumber(raw.side, 'side'),
+    side: normalizeSide(raw.side),
     signatureType: toNumber(raw.signatureType, 'signatureType'),
+    timestamp: toDecimalString(raw.timestamp, 'timestamp'),
+    expiration: toDecimalString(raw.expiration, 'expiration'),
+    metadata: normalizeBytes32(raw.metadata ?? ZERO_BYTES32, 'metadata'),
+    builder: normalizeBytes32(raw.builder, 'builder'),
     signature: normalizeSignature(raw.signature, 'signature'),
   };
 
@@ -187,15 +196,15 @@ export const getSignedOrderTypeMap = (order: NormalizedSignedOrder) => ({
   salt: typeof order.salt,
   maker: typeof order.maker,
   signer: typeof order.signer,
-  taker: typeof order.taker,
   tokenId: typeof order.tokenId,
   makerAmount: typeof order.makerAmount,
   takerAmount: typeof order.takerAmount,
-  expiration: typeof order.expiration,
-  nonce: typeof order.nonce,
-  feeRateBps: typeof order.feeRateBps,
   side: typeof order.side,
   signatureType: typeof order.signatureType,
+  timestamp: typeof order.timestamp,
+  expiration: typeof order.expiration,
+  metadata: typeof order.metadata,
+  builder: typeof order.builder,
   signature: typeof order.signature,
 });
 
@@ -203,6 +212,5 @@ export const redactSignedOrder = (order: NormalizedSignedOrder) => ({
   ...order,
   maker: `${order.maker.slice(0, 6)}...`,
   signer: `${order.signer.slice(0, 6)}...`,
-  taker: `${order.taker.slice(0, 6)}...`,
   signature: `${order.signature.slice(0, 10)}...`,
 });

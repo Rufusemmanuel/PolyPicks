@@ -1,12 +1,33 @@
 import 'server-only';
 
-import { buildPolyHmacSignature } from '@polymarket/clob-client/dist/signing/hmac.js';
+import { createHmac } from 'crypto';
 import type { PolymarketSessionData } from './session';
 
 type L2HeaderArgs = {
   method: string;
   requestPath: string;
   body?: string;
+};
+
+const decodeBase64Url = (secret: string) => {
+  const normalized = secret.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+  return Buffer.from(padded, 'base64');
+};
+
+const buildPolyHmacSignature = (
+  secret: string,
+  timestamp: number,
+  method: string,
+  requestPath: string,
+  body?: string,
+) => {
+  const message = `${timestamp}${method}${requestPath}${body ?? ''}`;
+  return createHmac('sha256', decodeBase64Url(secret))
+    .update(message)
+    .digest('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
 };
 
 export const buildL2Headers = async (
@@ -19,7 +40,7 @@ export const buildL2Headers = async (
   // requestPath must match the exact upstream path + query string.
   const ts = Math.floor(Date.now() / 1000);
   const body = args.body ?? '';
-  const signature = await buildPolyHmacSignature(
+  const signature = buildPolyHmacSignature(
     session.l2.secret,
     ts,
     args.method,
