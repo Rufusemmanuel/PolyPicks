@@ -65,12 +65,19 @@ const payload = {
 };
 
 const postPayload = async (body: unknown) => {
+  return postWithHandler(handler, body);
+};
+
+const postWithHandler = async (
+  orderHandler: (request: Request) => Promise<Response>,
+  body: unknown,
+) => {
   const request = new Request('http://localhost/api/polymarket/order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const response = await handler(request);
+  const response = await orderHandler(request);
   const data = await response.json();
   return { response, data };
 };
@@ -110,6 +117,62 @@ const run = async () => {
     mismatchedBuilder.data?.error !== 'Order builder code mismatch.'
   ) {
     console.error('Mismatched builder guard failed.', mismatchedBuilder);
+    process.exit(1);
+  }
+
+  const depositWallet = '0x0000000000000000000000000000000000000003';
+  const poly1271Payload = clonePayload();
+  poly1271Payload.order.maker = depositWallet;
+  poly1271Payload.order.signer = depositWallet;
+  poly1271Payload.order.signatureType = 3;
+  poly1271Payload.order.signature = `0x${'1'.repeat(260)}`;
+  const poly1271 = await postPayload({
+    ...poly1271Payload,
+    signatureType: 3,
+    funderAddress: depositWallet,
+  });
+  if (!poly1271.response.ok || !poly1271.data?.ok) {
+    console.error('POLY_1271 account model guard failed.', poly1271);
+    process.exit(1);
+  }
+
+  let destroyed = false;
+  const invalidAuthHandler = createOrderHandler({
+    getSession: async () => ({
+      l2: {
+        apiKey: 'stale-api-key',
+        secret: 'test-secret',
+        passphrase: 'test-passphrase',
+      },
+      walletAddress: '0x0000000000000000000000000000000000000001',
+      createdAt: Date.now(),
+      destroy: () => {
+        destroyed = true;
+      },
+    }),
+    isSessionExpired: () => false,
+    buildL2Headers: async () => ({
+      POLY_ADDRESS: '0x0000000000000000000000000000000000000001',
+      POLY_SIGNATURE: 'test-signature',
+      POLY_TIMESTAMP: '0',
+      POLY_API_KEY: 'stale-api-key',
+      POLY_PASSPHRASE: 'test-passphrase',
+    }),
+    clobHost: 'https://clob.polymarket.com',
+    fetchImpl: async () =>
+      new Response(JSON.stringify({ error: 'invalid authorization' }), { status: 401 }),
+    logger: {
+      info: () => {},
+      error: () => {},
+    },
+  });
+  const invalidAuth = await postWithHandler(invalidAuthHandler, payload);
+  if (
+    invalidAuth.response.status !== 401 ||
+    invalidAuth.data?.code !== 'AUTH_INVALID_SESSION' ||
+    !destroyed
+  ) {
+    console.error('Invalid authorization recovery failed.', { invalidAuth, destroyed });
     process.exit(1);
   }
 

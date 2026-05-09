@@ -36,6 +36,7 @@ type CreateAndPostArgs = {
 
 type OrderResponse = {
   ok: boolean;
+  code?: string;
   data?: unknown;
   error?: string;
   details?: unknown;
@@ -66,11 +67,16 @@ const fetchBuilderCode = async () => {
 export const ensureTradingSession = async (
   signer: ViemSigner,
   chainId = TRADE_CONFIG.chainId,
+  options?: { force?: boolean },
 ) => {
   const address = await signer.getAddress();
-  const statusRes = await fetch(`/api/polymarket/auth/status?address=${address}`);
-  const statusData = await safeJson<{ ok?: boolean }>(statusRes);
-  if (statusRes.ok && statusData?.ok) return true;
+  if (!options?.force) {
+    const statusRes = await fetch(`/api/polymarket/auth/status?address=${address}`, {
+      cache: 'no-store',
+    });
+    const statusData = await safeJson<{ ok?: boolean }>(statusRes);
+    if (statusRes.ok && statusData?.ok) return true;
+  }
   const l1Headers = await createL1Headers(
     signer as Parameters<typeof createL1Headers>[0],
     chainId,
@@ -78,7 +84,10 @@ export const ensureTradingSession = async (
   const initRes = await fetch('/api/polymarket/auth/init', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(l1Headers),
+    body: JSON.stringify({
+      ...l1Headers,
+      forceRefresh: options?.force === true,
+    }),
   });
   const initData = await safeJson<{ ok?: boolean; error?: string }>(initRes);
   if (!initRes.ok || !initData?.ok) {
@@ -87,7 +96,7 @@ export const ensureTradingSession = async (
   return true;
 };
 
-export const createAndPostOrder = async ({
+const createAndPostOrderOnce = async ({
   signer,
   tokenId,
   side,
@@ -102,11 +111,23 @@ export const createAndPostOrder = async ({
   negRisk,
   expiration,
   clientMeta,
-}: CreateAndPostArgs): Promise<OrderResponse> => {
+  forceSessionRefresh = false,
+}: CreateAndPostArgs & { forceSessionRefresh?: boolean }): Promise<OrderResponse> => {
   let execution = executionInput;
-  await ensureTradingSession(signer);
+  await ensureTradingSession(signer, TRADE_CONFIG.chainId, { force: forceSessionRefresh });
+  const authAddress = await signer.getAddress();
   const builderCode = await fetchBuilderCode();
   assertBuilderCodeReady(builderCode);
+  console.info('[polymarket]', {
+    event: 'order_client_auth_context',
+    component: 'trade_service',
+    signatureType,
+    authAddress,
+    signer: authAddress,
+    funderAddress,
+    tokenIdPrefix: tokenId.slice(0, 12),
+    forceSessionRefresh,
+  });
   const clobClient = createClobClient({
     signer,
     signatureType,
@@ -182,14 +203,20 @@ export const createAndPostOrder = async ({
 
   const normalized = normalizeSignedOrder(signedOrder);
   assertSignedOrderBuilder(normalized.builder, builderCode);
-  if (process.env.NODE_ENV !== 'production') {
-    console.info('[polymarket] signed order attribution', {
-      builderCode,
-      finalBuilder: normalized.builder,
-      orderType: execution,
-      tradeMode,
-    });
-  }
+  console.info('[polymarket]', {
+    event: 'signed_order_ready',
+    component: 'trade_service',
+    builderCode,
+    finalBuilder: normalized.builder,
+    orderType: execution,
+    tradeMode,
+    signatureType: normalized.signatureType,
+    maker: normalized.maker,
+    signer: normalized.signer,
+    authAddress,
+    funderAddress,
+    signatureLength: normalized.signature.length,
+  });
   const res = await fetch('/api/polymarket/order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -199,6 +226,7 @@ export const createAndPostOrder = async ({
       order: normalized,
       signatureType,
       funderAddress,
+      authAddress,
       ...(clientMeta ? { clientMeta } : {}),
     }),
   });
@@ -212,10 +240,27 @@ export const createAndPostOrder = async ({
       'Order rejected.';
     return {
       ok: false,
+      code: (data as { code?: string })?.code,
       error: errorText,
       ...(details ? { details } : {}),
       data,
     };
   }
   return { ok: true, data };
+};
+
+export const createAndPostOrder = async (
+  args: CreateAndPostArgs,
+): Promise<OrderResponse> => {
+  const first = await createAndPostOrderOnce(args);
+  if (first.ok || first.code !== 'AUTH_INVALID_SESSION') {
+    return first;
+  }
+  console.info('[polymarket]', {
+    event: 'retrying_after_invalid_l2_auth',
+    component: 'trade_service',
+    signatureType: args.signatureType,
+    funderAddress: args.funderAddress,
+  });
+  return createAndPostOrderOnce({ ...args, forceSessionRefresh: true });
 };

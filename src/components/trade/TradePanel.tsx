@@ -395,7 +395,7 @@ export function TradePanel({
   };
 
   const ensureApprovals = async () => {
-    if (TRADE_CONFIG.signatureType === 0) return;
+    if (TRADE_CONFIG.signatureType === 0 || TRADE_CONFIG.signatureType === 3) return;
     if (!polymarketSession.proxyAddress) return;
     const contractConfig = getClobContractConfig(TRADE_CONFIG.chainId);
     const exchange = negRisk ? contractConfig.negRiskExchange : contractConfig.exchange;
@@ -461,6 +461,16 @@ export function TradePanel({
         return;
       }
       const funder = await resolveFunderAddress(signer);
+      const authAddress = await signer.getAddress();
+      console.info('[trade-ui]', {
+        event: 'trade_submit_auth_context',
+        signatureType: TRADE_CONFIG.signatureType,
+        authAddress,
+        signer: authAddress,
+        funderAddress: funder,
+        walletSessionProxy: polymarketSession.proxyAddress,
+        relayerProxy,
+      });
       await ensureApprovals();
       const marketAmount =
         orderType === 'MARKET'

@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { clearSession, getSession, isSessionExpired } from '@/lib/server/session';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 const CLOB_HOST =
   process.env.POLYMARKET_CLOB_URL ?? 'https://clob.polymarket.com';
@@ -13,6 +15,9 @@ type L1Headers = {
   POLY_TIMESTAMP: string;
   POLY_NONCE: string;
 };
+
+const redact = (value: string | undefined) =>
+  value ? `${value.slice(0, 6)}...${value.slice(-4)}` : null;
 
 const normalizeL1Headers = (payload: Record<string, unknown>): L1Headers | null => {
   const address =
@@ -77,6 +82,7 @@ export async function POST(request: NextRequest) {
       { status: 400, headers: { 'Cache-Control': 'no-store' } },
     );
   }
+  const forceRefresh = payload.forceRefresh === true;
 
   let session: Awaited<ReturnType<typeof getSession>>;
   try {
@@ -90,7 +96,23 @@ export async function POST(request: NextRequest) {
   if (session.l2 && session.walletAddress && session.walletAddress !== l1Headers.POLY_ADDRESS) {
     clearSession(session);
   }
-  if (session.l2 && session.walletAddress === l1Headers.POLY_ADDRESS && !isSessionExpired(session)) {
+  if (forceRefresh && session.l2) {
+    session.l2 = undefined;
+    session.walletAddress = undefined;
+    session.createdAt = undefined;
+  }
+  if (
+    !forceRefresh &&
+    session.l2 &&
+    session.walletAddress === l1Headers.POLY_ADDRESS &&
+    !isSessionExpired(session)
+  ) {
+    console.info('[polymarket]', {
+      event: 'l2_creds_reused',
+      component: 'auth_init',
+      authAddress: l1Headers.POLY_ADDRESS,
+      apiKey: redact(session.l2.apiKey),
+    });
     return NextResponse.json(
       { ok: true },
       { headers: { 'Cache-Control': 'no-store' } },
@@ -126,8 +148,20 @@ export async function POST(request: NextRequest) {
     };
   };
 
-  const creds = (await tryDerive()) ?? (await tryCreate());
+  let source: 'derive' | 'create' | null = 'derive';
+  let creds = await tryDerive();
+  if (!creds) {
+    source = 'create';
+    creds = await tryCreate();
+  }
   if (!creds?.apiKey || !creds.secret || !creds.passphrase) {
+    console.info('[polymarket]', {
+      event: 'l2_creds_init_failed',
+      component: 'auth_init',
+      authAddress: l1Headers.POLY_ADDRESS,
+      source,
+      forceRefresh,
+    });
     return NextResponse.json(
       { ok: false, error: 'Unable to initialize session.' },
       { status: 502, headers: { 'Cache-Control': 'no-store' } },
@@ -142,6 +176,17 @@ export async function POST(request: NextRequest) {
   session.walletAddress = l1Headers.POLY_ADDRESS;
   session.createdAt = Date.now();
   await session.save();
+
+  console.info('[polymarket]', {
+    event: 'l2_creds_initialized',
+    component: 'auth_init',
+    authAddress: l1Headers.POLY_ADDRESS,
+    source,
+    forceRefresh,
+    apiKey: redact(creds.apiKey),
+    passphrase: redact(creds.passphrase),
+    hasSecret: Boolean(creds.secret),
+  });
 
   return NextResponse.json(
     { ok: true },

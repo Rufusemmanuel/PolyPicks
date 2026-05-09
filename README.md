@@ -19,6 +19,7 @@ Next.js 14 + Prisma dashboard for Polymarket markets.
   - `NEXT_PUBLIC_CLOB_DEBUG=false`
   - `NEXT_PUBLIC_FORCE_EOA=false`
   - `NEXT_PUBLIC_POLY_RELAYER_URL=`
+  - `NEXT_PUBLIC_POLY_SIGNATURE_TYPE=2` for existing Safe proxy users; use `3` only for deposit wallets that require `POLY_1271`.
   - `POLYMARKET_DATA_API_BASE_URL=https://data-api.polymarket.com`
 - For soccer stats, set `FOOTBALL_DATA_API_KEY` in `.env.local` (local dev) or Vercel Project Settings → Environment Variables.
 - Generate Prisma client: `npx prisma generate`
@@ -36,3 +37,5 @@ Next.js 14 + Prisma dashboard for Polymarket markets.
 The app uses the Polymarket Gamma/Data API and an optional RTDS WebSocket for live prices.
 
 Builder-attributed trading uses CLOB V2 `builderCode`. The browser fetches the server-configured bytes32 code before signing, the SDK serializes it into the final order `builder` field, and the server rejects posts where that field is missing or mismatched.
+
+Order signing supports Polymarket V2 signature types `0`, `1`, `2`, and `3`. Existing proxy/Safe wallets use their existing type (`1` or `2`). Deposit-wallet orders must use `3`, with `maker` and `signer` equal to the deposit wallet address.

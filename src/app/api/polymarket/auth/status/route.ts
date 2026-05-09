@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { clearSession, getSession, isSessionExpired } from '@/lib/server/session';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(request: NextRequest) {
   const rawHeaders = Array.from(request.headers.keys());

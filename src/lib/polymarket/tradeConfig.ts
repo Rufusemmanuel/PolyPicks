@@ -1,10 +1,10 @@
-export type SignatureType = 0 | 1 | 2;
+export type SignatureType = 0 | 1 | 2 | 3;
 
 const parseSignatureType = (): SignatureType => {
   const raw = process.env.NEXT_PUBLIC_POLY_SIGNATURE_TYPE;
   if (raw != null) {
     const parsed = Number(raw);
-    if (parsed === 0 || parsed === 1 || parsed === 2) return parsed;
+    if (parsed === 0 || parsed === 1 || parsed === 2 || parsed === 3) return parsed;
   }
   return process.env.NEXT_PUBLIC_FORCE_EOA === 'true' ? 0 : 2;
 };

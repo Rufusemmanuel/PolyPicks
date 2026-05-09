@@ -33,6 +33,14 @@ const redactSignature = (value: unknown) => {
   if (!value.startsWith('0x')) return value;
   return `${value.slice(0, 10)}...`;
 };
+const redactCredential = (value: unknown) => {
+  if (typeof value !== 'string' || !value) return null;
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+};
+const sameAddress = (left: unknown, right: unknown) =>
+  typeof left === 'string' &&
+  typeof right === 'string' &&
+  left.toLowerCase() === right.toLowerCase();
 const redactOrderPayload = (payload: unknown) => {
   if (!payload || typeof payload !== 'object') return payload;
   const copy = structuredClone(payload) as Record<string, unknown>;
@@ -228,6 +236,19 @@ export const createOrderHandler = ({
         { status: 400, headers: { 'Cache-Control': 'no-store' } },
       );
     }
+    if (
+      typeof payload.authAddress === 'string' &&
+      !sameAddress(payload.authAddress, session.walletAddress)
+    ) {
+      logOrderEvent(logger, 'error', 'auth_address_mismatch', {
+        clientAuthAddress: payload.authAddress,
+        sessionAuthAddress: session.walletAddress,
+      });
+      return NextResponse.json(
+        { ok: false, error: 'Auth address mismatch.' },
+        { status: 401, headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
     if (payload.funderAddress) {
       const makerValue = normalizedOrder.maker;
       const funderValue = payload.funderAddress;
@@ -243,6 +264,52 @@ export const createOrderHandler = ({
           { status: 400, headers: { 'Cache-Control': 'no-store' } },
         );
       }
+    }
+
+    const signatureType = Number(normalizedOrder.signatureType);
+    const funderAddress =
+      typeof payload.funderAddress === 'string' ? payload.funderAddress : null;
+    const authAddress = session.walletAddress;
+    const maker = normalizedOrder.maker;
+    const signer = normalizedOrder.signer;
+    const accountModelErrors: string[] = [];
+    if (signatureType === 0) {
+      if (!sameAddress(maker, authAddress)) accountModelErrors.push('EOA maker must match auth address.');
+      if (!sameAddress(signer, authAddress)) accountModelErrors.push('EOA signer must match auth address.');
+    } else if (signatureType === 1 || signatureType === 2) {
+      if (!sameAddress(signer, authAddress)) {
+        accountModelErrors.push('Proxy/Safe signer must match auth address.');
+      }
+      if (funderAddress && !sameAddress(maker, funderAddress)) {
+        accountModelErrors.push('Proxy/Safe maker must match funder address.');
+      }
+    } else if (signatureType === 3) {
+      if (!funderAddress) accountModelErrors.push('POLY_1271 funder address is required.');
+      if (!sameAddress(maker, signer)) {
+        accountModelErrors.push('POLY_1271 maker and signer must match.');
+      }
+      if (funderAddress && !sameAddress(maker, funderAddress)) {
+        accountModelErrors.push('POLY_1271 maker must match funder address.');
+      }
+      if (typeof normalizedOrder.signature === 'string' && normalizedOrder.signature.length <= 132) {
+        accountModelErrors.push('POLY_1271 signature must be the wrapped ERC-7739 signature.');
+      }
+    } else {
+      accountModelErrors.push('Unsupported signature type.');
+    }
+    if (accountModelErrors.length) {
+      logOrderEvent(logger, 'error', 'order_account_model_mismatch', {
+        signatureType,
+        maker,
+        signer,
+        funderAddress,
+        authAddress,
+        accountModelErrors,
+      });
+      return NextResponse.json(
+        { ok: false, error: 'Order account model mismatch.', details: { accountModelErrors } },
+        { status: 400, headers: { 'Cache-Control': 'no-store' } },
+      );
     }
 
     try {
@@ -315,6 +382,14 @@ export const createOrderHandler = ({
         tokenIdPrefix: String(orderPayload.order?.tokenId ?? '').slice(0, 12),
         builderCode: orderPayload.order?.builder,
         hasBuilder: Boolean(orderPayload.order?.builder),
+        signatureType,
+        maker,
+        signer,
+        funderAddress,
+        authAddress,
+        apiKey: redactCredential(session.l2.apiKey),
+        passphrase: redactCredential(session.l2.passphrase),
+        hasSecret: Boolean(session.l2.secret),
       });
       if (process.env.POLYMARKET_ORDER_DEBUG === '1') {
         logOrderEvent(logger, 'info', 'final_order_payload_debug', {
@@ -447,8 +522,38 @@ export const createOrderHandler = ({
         logOrderEvent(logger, 'error', 'exchange_http_rejection', {
           status: res.status,
           body: data ?? null,
-          sent: sentDebug,
+          sent: {
+            ...sentDebug,
+            signatureType,
+            maker,
+            signer,
+            funderAddress,
+            authAddress,
+            apiKey: redactCredential(session.l2.apiKey),
+          },
         });
+        const serializedBody = JSON.stringify(data ?? {}).toLowerCase();
+        if (res.status === 401 && serializedBody.includes('invalid authorization')) {
+          const redactedApiKey = redactCredential(session.l2.apiKey);
+          session.destroy?.();
+          logOrderEvent(logger, 'error', 'invalid_l2_authorization_session_cleared', {
+            authAddress,
+            apiKey: redactedApiKey,
+          });
+          return NextResponse.json(
+            {
+              ok: false,
+              code: 'AUTH_INVALID_SESSION',
+              error: 'Polymarket authorization expired. Reinitializing wallet session.',
+              details: {
+                status: res.status,
+                body: data ?? null,
+              },
+              sent: sentDebug,
+            },
+            { status: 401, headers: { 'Cache-Control': 'no-store' } },
+          );
+        }
         return NextResponse.json(
           {
             ok: false,

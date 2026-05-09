@@ -12,6 +12,8 @@ PolyPicks trading is a user-wallet flow. The backend never signs user orders wit
 
 The usual app infrastructure variables, such as `DATABASE_URL`, are still required for login and persistence.
 
+Set `NEXT_PUBLIC_POLY_SIGNATURE_TYPE` to the wallet model being used: `0` for direct EOA, `1` for Polymarket proxy, `2` for existing Gnosis Safe proxy, or `3` for deposit-wallet `POLY_1271`. Deposit-wallet orders require `maker` and `signer` to both be the deposit wallet address.
+
 ## Optional admin/reporting
 
 | Variable | Purpose |
@@ -27,3 +29,4 @@ The usual app infrastructure variables, such as `DATABASE_URL`, are still requir
 2. The user signs CLOB auth and order typed data from the connected wallet.
 3. `POLYMARKET_BUILDER_CODE` is added before signing and becomes the signed V2 `order.builder` field.
 4. The backend validates `order.builder`, uses the user-derived L2 session to post the signed order, and never creates a custodial order.
+5. If CLOB returns `401 invalid authorization`, the backend clears the stale user L2 session so the browser can re-derive credentials from the connected wallet and retry.
