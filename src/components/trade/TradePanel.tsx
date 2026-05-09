@@ -72,6 +72,9 @@ const normalizeTradeErrorMessage = (message: string) => {
   return message;
 };
 
+const sameAddress = (left: string, right: string) =>
+  left.toLowerCase() === right.toLowerCase();
+
 export function TradePanel({
   marketId,
   yesTokenId,
@@ -205,10 +208,7 @@ export function TradePanel({
   }, [relayerEnabled, walletSigner]);
 
   useEffect(() => {
-    const balanceAddress =
-      TRADE_CONFIG.signatureType === 3
-        ? polymarketSession.depositWalletAddress
-        : polymarketSession.proxyAddress;
+    const balanceAddress = polymarketSession.tradingWalletAddress ?? polymarketSession.depositWalletAddress;
     if (!balanceAddress) return;
     let isMounted = true;
     setBalanceLoading(true);
@@ -224,7 +224,11 @@ export function TradePanel({
     return () => {
       isMounted = false;
     };
-  }, [polymarketSession.depositWalletAddress, polymarketSession.proxyAddress]);
+  }, [
+    polymarketSession.depositWalletAddress,
+    polymarketSession.getUsdcBalance,
+    polymarketSession.tradingWalletAddress,
+  ]);
 
   const limitPriceValue = useMemo(() => {
     if (!limitPriceCents.trim()) return null;
@@ -392,46 +396,24 @@ export function TradePanel({
     return { signer, chainId: result.chainId };
   };
 
-  const resolveFunderAddress = async (signer: ReturnType<typeof createViemSigner>) => {
-    if (TRADE_CONFIG.signatureType === 0) {
-      return signer.getAddress();
+  const resolveTradingWalletAddress = async () => {
+    const wallet =
+      polymarketSession.tradingWalletAddress ??
+      polymarketSession.depositWalletAddress ??
+      (await polymarketSession.ensureDepositWalletDeployed({ force: true }));
+    if (!wallet) {
+      throw new Error('Trading wallet address unavailable.');
     }
-    if (TRADE_CONFIG.signatureType === 1) {
-      const proxy =
-        proxyWalletAddress ?? relayerProxy ?? polymarketSession.proxyAddress;
-      if (!proxy) {
-        throw new Error('Magic Link proxy address unavailable.');
-      }
-      return proxy;
-    }
-    if (TRADE_CONFIG.signatureType === 3) {
-      return polymarketSession.ensureDepositWalletDeployed({ force: true });
-    }
-    if (proxyWalletAddress || relayerProxy) {
-      return proxyWalletAddress ?? relayerProxy ?? '';
-    }
-    return polymarketSession.ensureProxyDeployed({ force: true });
+    return wallet;
   };
 
   const ensureApprovals = async () => {
-    if (TRADE_CONFIG.signatureType === 0) return;
-    if (TRADE_CONFIG.signatureType === 3) {
-      const contractConfig = getClobContractConfig(TRADE_CONFIG.chainId);
-      const exchange = negRisk ? contractConfig.negRiskExchangeV2 : contractConfig.exchangeV2;
-      const collateral = contractConfig.collateral;
-      const required = BigInt(Math.ceil((notional ?? 0) * 1_000_000));
-      if (required > 0n) {
-        await polymarketSession.ensureDepositWalletApprovals(collateral, exchange, required);
-      }
-      return;
-    }
-    if (!polymarketSession.proxyAddress) return;
     const contractConfig = getClobContractConfig(TRADE_CONFIG.chainId);
-    const exchange = negRisk ? contractConfig.negRiskExchange : contractConfig.exchange;
+    const exchange = negRisk ? contractConfig.negRiskExchangeV2 : contractConfig.exchangeV2;
     const collateral = contractConfig.collateral;
     const required = BigInt(Math.ceil((notional ?? 0) * 1_000_000));
     if (required > 0n) {
-      await polymarketSession.ensureApprovals(collateral, exchange, required);
+      await polymarketSession.ensureDepositWalletApprovals(collateral, exchange, required);
     }
   };
 
@@ -489,18 +471,36 @@ export function TradePanel({
         setMessage('Connect your wallet to continue.');
         return;
       }
-      const funder = await resolveFunderAddress(signer);
+      const funder = await resolveTradingWalletAddress();
       const authAddress = await signer.getAddress();
+      if (
+        polymarketSession.depositWalletAddress &&
+        !sameAddress(funder, polymarketSession.depositWalletAddress)
+      ) {
+        throw new Error(
+          `Resolved trading wallet ${funder} does not match canonical deposit wallet ${polymarketSession.depositWalletAddress}.`,
+        );
+      }
       console.info('[trade-ui]', {
         event: 'trade_submit_auth_context',
-        signatureType: TRADE_CONFIG.signatureType,
+        signatureType: 3,
         authAddress,
         signer: authAddress,
         funderAddress: funder,
+        tradingWalletAddress: polymarketSession.tradingWalletAddress,
         depositWalletAddress: polymarketSession.depositWalletAddress,
         depositWalletDeployed: polymarketSession.depositWalletDeployed,
         walletSessionProxy: polymarketSession.proxyAddress,
         relayerProxy,
+      });
+      console.info('[trade-ui]', {
+        event: 'trade_submit_canonical_wallet',
+        connectedEoa: authAddress,
+        resolvedDepositWallet: polymarketSession.depositWalletAddress ?? null,
+        tradingWalletAddress: funder,
+        maker: funder,
+        signer: funder,
+        funderAddress: funder,
       });
       await ensureApprovals();
       const marketAmount =
@@ -516,7 +516,7 @@ export function TradePanel({
         amount: marketAmount,
         tradeMode: orderType === 'MARKET' ? 'market' : 'limit',
         execution: orderType === 'MARKET' ? OrderType.FOK : OrderType.GTC,
-        signatureType: TRADE_CONFIG.signatureType,
+        signatureType: 3,
         funderAddress: funder,
         tickSize,
         negRisk,

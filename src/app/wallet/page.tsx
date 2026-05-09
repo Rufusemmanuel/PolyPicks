@@ -135,23 +135,29 @@ export default function WalletPage() {
   const [relayerClient, setRelayerClient] = useState<RelayClient | null>(null);
   const [proxyAddress, setProxyAddress] = useState<string | null>(null);
   const [proxyDeployed, setProxyDeployed] = useState<boolean | null>(null);
+  const [depositWalletAddress, setDepositWalletAddress] = useState<string | null>(null);
+  const [depositWalletDeployed, setDepositWalletDeployed] = useState<boolean | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawTo, setWithdrawTo] = useState('');
   const [withdrawBusy, setWithdrawBusy] = useState(false);
   const isWalletReady = isConnected && isCorrectNetwork;
-  const isResolvingProxy = isWalletReady && !proxyAddress && !status;
+  const isResolvingTradingWallet =
+    isWalletReady && depositWalletDeployed === null && !status;
   const shortProxyAddress = proxyAddress
     ? `${proxyAddress.slice(0, 6)}...${proxyAddress.slice(-4)}`
     : null;
-  const proxyStatusLabel = !isConnected
+  const shortTradingWalletAddress = depositWalletAddress
+    ? `${depositWalletAddress.slice(0, 6)}...${depositWalletAddress.slice(-4)}`
+    : null;
+  const tradingWalletStatusLabel = !isConnected
     ? 'Not connected'
     : !isCorrectNetwork
       ? 'Unavailable'
-      : isResolvingProxy
+      : isResolvingTradingWallet
         ? 'Resolving'
-        : proxyAddress
+        : depositWalletAddress
           ? 'Connected'
           : 'Unavailable';
   const buttonSecondary = isDark ? buttonSecondaryDark : buttonSecondaryLight;
@@ -165,6 +171,8 @@ export default function WalletPage() {
       setRelayerClient(null);
       setProxyAddress(null);
       setProxyDeployed(null);
+      setDepositWalletAddress(null);
+      setDepositWalletDeployed(null);
       setStatus(null);
       return;
     }
@@ -190,10 +198,26 @@ export default function WalletPage() {
         }
         setProxyAddress(resolvedSafe);
         setProxyDeployed(deployed);
+        const resolvedDepositWallet = await relayer.deriveDepositWalletAddress();
+        const resolvedDepositWalletDeployed = await relayer.getDeployed(
+          resolvedDepositWallet,
+          'WALLET',
+        );
+        setDepositWalletAddress(resolvedDepositWallet);
+        setDepositWalletDeployed(resolvedDepositWalletDeployed);
+        console.info('[wallet]', {
+          event: 'wallet_page_resolved_trading_wallet',
+          connectedEoa: address,
+          proxyWalletAddress: resolvedSafe,
+          depositWalletAddress: resolvedDepositWallet,
+          depositWalletDeployed: resolvedDepositWalletDeployed,
+        });
         setStatus(null);
       } catch (err) {
         setStatus(err instanceof Error ? err.message : 'Unable to load wallet.');
         setProxyDeployed(null);
+        setDepositWalletAddress(null);
+        setDepositWalletDeployed(null);
       }
     })();
   }, [address, chainId, isConnected, walletClient]);
@@ -218,22 +242,23 @@ export default function WalletPage() {
   }, [address, proxyAddress, relayerClient]);
 
   const positionsQuery = useQuery({
-    queryKey: ['wallet-positions', proxyAddress],
-    enabled: Boolean(proxyAddress),
-    queryFn: async () => fetchPositions(proxyAddress!),
+    queryKey: ['wallet-positions', depositWalletAddress ?? proxyAddress],
+    enabled: Boolean(depositWalletAddress ?? proxyAddress),
+    queryFn: async () => fetchPositions((depositWalletAddress ?? proxyAddress)!),
   });
 
   const { collateral } = getContractConfig(polygon.id);
   const usdcBalanceQuery = useQuery({
-    queryKey: ['wallet-usdc-balance', proxyAddress],
-    enabled: Boolean(proxyAddress && publicClient),
+    queryKey: ['wallet-usdc-balance', depositWalletAddress ?? proxyAddress],
+    enabled: Boolean((depositWalletAddress ?? proxyAddress) && publicClient),
     queryFn: async () => {
-      if (!publicClient || !proxyAddress) return 0n;
+      const walletAddress = depositWalletAddress ?? proxyAddress;
+      if (!publicClient || !walletAddress) return 0n;
       return publicClient.readContract({
         abi: erc20Abi,
         address: collateral as `0x${string}`,
         functionName: 'balanceOf',
-        args: [proxyAddress as `0x${string}`],
+        args: [walletAddress as `0x${string}`],
       }) as Promise<bigint>;
     },
   });
@@ -336,7 +361,7 @@ export default function WalletPage() {
             <p className={`${cardLabel} text-blue-400`}>Wallet</p>
             <h1 className={pageTitle}>Portfolio</h1>
             <p className={`${bodyText} ${isDark ? 'text-white/70' : 'text-slate-600'}`}>
-              Track your proxy wallet balances and positions.
+              Track your deposit wallet balances and positions.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -373,14 +398,14 @@ export default function WalletPage() {
 
         <div className="grid gap-4 md:grid-cols-3">
           <div className={`${cardBase} ${cardSurface} p-4`}>
-            <p className={`${cardLabel} text-white/50`}>Wallet balance</p>
+            <p className={`${cardLabel} text-white/50`}>Trading wallet balance</p>
             <p className="mt-2 text-2xl font-semibold">
               {usdcBalanceQuery.data
                 ? `$${Number(formatUnits(usdcBalanceQuery.data as bigint, 6)).toFixed(2)}`
                 : '-'}
             </p>
             <p className={`mt-2 text-[11px] ${isDark ? 'text-white/40' : 'text-slate-500'}`}>
-              Proxy USDC on Polygon
+              Deposit wallet USDC on Polygon
             </p>
           </div>
           <div className={`${cardBase} ${cardSurface} p-4`}>
@@ -404,30 +429,30 @@ export default function WalletPage() {
         <div className={`${cardBase} ${cardSurface} p-5`}>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className={`${cardLabel} text-white/50`}>Proxy wallet</p>
+              <p className={`${cardLabel} text-white/50`}>Trading wallet</p>
               {!isConnected && (
                 <p className="mt-2 text-sm font-semibold">
-                  Connect a wallet to view proxy.
+                  Connect a wallet to view the deposit wallet.
                 </p>
               )}
               {isConnected && !isCorrectNetwork && (
                 <p className="mt-2 text-sm font-semibold">
-                  Switch to Polygon to view proxy.
+                  Switch to Polygon to view the deposit wallet.
                 </p>
               )}
-              {isWalletReady && !proxyAddress && (
-                <p className="mt-2 text-sm font-semibold">Resolving proxy wallet...</p>
+              {isWalletReady && !depositWalletAddress && (
+                <p className="mt-2 text-sm font-semibold">Resolving deposit wallet...</p>
               )}
-              {isWalletReady && proxyAddress && (
+              {isWalletReady && depositWalletAddress && (
                 <div className="mt-2 flex items-center gap-2 text-sm font-semibold">
-                  <span className="font-mono">{shortProxyAddress}</span>
+                  <span className="font-mono">{shortTradingWalletAddress}</span>
                   <button
                     type="button"
                     onClick={() =>
-                      navigator.clipboard.writeText(proxyAddress).catch(() => null)
+                      navigator.clipboard.writeText(depositWalletAddress).catch(() => null)
                     }
                     className={`${buttonSecondary} h-7 px-2 text-[10px] font-semibold`}
-                    aria-label="Copy proxy address"
+                    aria-label="Copy trading wallet address"
                   >
                     Copy
                   </button>
@@ -437,14 +462,14 @@ export default function WalletPage() {
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className={
-                  proxyStatusLabel === 'Connected'
+                  tradingWalletStatusLabel === 'Connected'
                     ? chipSuccess
-                    : proxyStatusLabel === 'Resolving'
+                    : tradingWalletStatusLabel === 'Resolving'
                       ? chipLive
                       : chipMuted
                 }
               >
-                {proxyStatusLabel}
+                {tradingWalletStatusLabel}
               </span>
               {isWalletReady && (
                 <button
@@ -467,9 +492,9 @@ export default function WalletPage() {
             </div>
           </div>
           {status && <p className="mt-3 text-xs text-red-400">{status}</p>}
-          {isWalletReady && proxyAddress && (
+          {isWalletReady && depositWalletAddress && (
             <p className="mt-3 text-[11px] text-slate-500">
-              Send USDC on Polygon to this proxy address to fund trades.
+              Send USDC on Polygon to this deposit wallet address to fund trades.
             </p>
           )}
         </div>

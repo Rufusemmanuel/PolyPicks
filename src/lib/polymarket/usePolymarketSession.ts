@@ -17,7 +17,6 @@ import {
   loadStoredProxyAddress,
   storeProxyAddress,
 } from '@/lib/polymarket/relayer';
-import { TRADE_CONFIG } from '@/lib/polymarket/tradeConfig';
 import { getPolygonPublicClient } from '@/lib/wallet/publicClient';
 import type { WalletClient } from 'viem';
 
@@ -27,6 +26,7 @@ type SessionState = {
   proxyDeployed: boolean | null;
   depositWalletAddress: string | null;
   depositWalletDeployed: boolean | null;
+  tradingWalletAddress: string | null;
   isLoading: boolean;
   lastRefreshAt: number | null;
   error: string | null;
@@ -77,6 +77,7 @@ export const usePolymarketSession = (
   const [proxyDeployed, setProxyDeployed] = useState<boolean | null>(null);
   const [depositWalletAddress, setDepositWalletAddress] = useState<string | null>(null);
   const [depositWalletDeployed, setDepositWalletDeployed] = useState<boolean | null>(null);
+  const [tradingWalletAddress, setTradingWalletAddress] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +106,7 @@ export const usePolymarketSession = (
       setProxyDeployed(null);
       setDepositWalletAddress(null);
       setDepositWalletDeployed(null);
+      setTradingWalletAddress(null);
       setLastRefreshAt(null);
       setError(null);
       setIsLoading(false);
@@ -175,6 +177,7 @@ export const usePolymarketSession = (
           setProxyDeployed(deployed);
           setDepositWalletAddress(depositWallet);
           setDepositWalletDeployed(depositDeployed);
+          setTradingWalletAddress(depositWallet);
           setLastRefreshAt(Date.now());
           setError(deployCheckError ?? depositCheckError);
           initState.attempts = 0;
@@ -183,6 +186,7 @@ export const usePolymarketSession = (
               chainId: activeChainId,
               proxyAddress: resolvedSafe,
               depositWalletAddress: depositWallet,
+              tradingWalletAddress: depositWallet,
               depositWalletDeployed: depositDeployed,
               eoaAddress: activeAddress,
               lastRefreshAt: new Date().toISOString(),
@@ -284,22 +288,30 @@ export const usePolymarketSession = (
     if (!relayClient) {
       throw new Error('Relayer client not ready.');
     }
-    if (depositWalletDeployed === true && depositWalletAddress) {
-      return depositWalletAddress;
-    }
     if (depositWalletDeployed === null && !options?.force) {
       throw new Error('Deposit wallet deployment status unknown. Try again.');
     }
     if (ensureDepositWalletRef.current) return ensureDepositWalletRef.current;
     ensureDepositWalletRef.current = (async () => {
-      const walletAddress =
-        depositWalletAddress ?? await relayClient.deriveDepositWalletAddress();
+      const walletAddress = await relayClient.deriveDepositWalletAddress();
+      if (depositWalletAddress && depositWalletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.info('[wallet] resolved deposit wallet updated', {
+            connectedEoa: eoaAddress,
+            previousDepositWalletAddress: depositWalletAddress,
+            resolvedDepositWalletAddress: walletAddress,
+          });
+        }
+      }
+      setDepositWalletAddress(walletAddress);
+      setTradingWalletAddress(walletAddress);
       if (depositWalletDeployed === null && options?.force) {
         try {
           const deployed = await relayClient.getDeployed(walletAddress, 'WALLET');
           if (deployed) {
             setDepositWalletAddress(walletAddress);
             setDepositWalletDeployed(true);
+            setTradingWalletAddress(walletAddress);
             return walletAddress;
           }
           setDepositWalletDeployed(false);
@@ -314,12 +326,13 @@ export const usePolymarketSession = (
       const deployedWallet = await ensureDepositWalletDeployedWithRelayer(relayClient);
       setDepositWalletAddress(deployedWallet);
       setDepositWalletDeployed(true);
+      setTradingWalletAddress(deployedWallet);
       return deployedWallet;
     })().finally(() => {
       ensureDepositWalletRef.current = null;
     });
     return ensureDepositWalletRef.current;
-  }, [depositWalletAddress, depositWalletDeployed, relayClient]);
+  }, [depositWalletAddress, depositWalletDeployed, eoaAddress, relayClient]);
 
   const refreshProxyDeployment = useCallback(async () => {
     if (!relayClient) {
@@ -345,14 +358,10 @@ export const usePolymarketSession = (
 
   const getTokenBalance = useCallback(
     async (token: string, address?: string) => {
-      const owner = address ?? (
-        TRADE_CONFIG.signatureType === 3 ? depositWalletAddress : proxyAddress
-      );
+      const owner = address ?? tradingWalletAddress ?? depositWalletAddress ?? proxyAddress;
       if (!owner) {
         throw new Error(
-          TRADE_CONFIG.signatureType === 3
-            ? 'Deposit wallet address unavailable.'
-            : 'Proxy address unavailable.',
+          'Trading wallet address unavailable.',
         );
       }
       const key = `${token.toLowerCase()}-${owner.toLowerCase()}`;
@@ -372,7 +381,7 @@ export const usePolymarketSession = (
       balanceInFlightRef.current.set(key, request);
       return request;
     },
-    [depositWalletAddress, publicClient, proxyAddress],
+    [depositWalletAddress, publicClient, proxyAddress, tradingWalletAddress],
   );
 
   const ensureApprovals = useCallback(
@@ -588,8 +597,8 @@ export const usePolymarketSession = (
       throw new Error('Chain unavailable.');
     }
     const { collateral } = getContractConfig(chainId);
-    if (TRADE_CONFIG.signatureType === 3) {
-      const walletAddress = depositWalletAddress ?? (await ensureDepositWalletDeployed());
+    if (tradingWalletAddress || depositWalletAddress) {
+      const walletAddress = tradingWalletAddress ?? (await ensureDepositWalletDeployed({ force: true }));
       return getTokenBalance(collateral, walletAddress);
     }
     const proxy = proxyAddress ?? (await ensureProxyDeployed());
@@ -601,6 +610,7 @@ export const usePolymarketSession = (
     ensureProxyDeployed,
     getTokenBalance,
     proxyAddress,
+    tradingWalletAddress,
   ]);
 
   const withdrawErc20 = useCallback(
@@ -633,6 +643,7 @@ export const usePolymarketSession = (
       proxyDeployed,
       depositWalletAddress,
       depositWalletDeployed,
+      tradingWalletAddress,
       isLoading,
       lastRefreshAt,
       error,
@@ -654,6 +665,7 @@ export const usePolymarketSession = (
       proxyDeployed,
       depositWalletAddress,
       depositWalletDeployed,
+      tradingWalletAddress,
       isLoading,
       lastRefreshAt,
       error,

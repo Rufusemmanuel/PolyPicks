@@ -370,6 +370,14 @@ export const ensureDepositWalletDeployed = async (client: RelayClient) => {
   const request = buildDepositWalletCreateRequest(owner, depositWalletConfig);
   const response = buildRelayerResponse(client, await submitRelayerRequest(request));
   await waitForRelayerResponse(response, 'Deposit wallet deployment failed.');
+  console.info('[polymarket]', {
+    event: 'deposit_wallet_create_confirmed',
+    component: 'relayer',
+    owner,
+    depositWalletAddress: walletAddress,
+    txId: response.transactionID,
+    txHash: response.transactionHash,
+  });
   const deployed = await client.getDeployed(walletAddress, 'WALLET');
   if (!deployed) {
     throw new Error('Deposit wallet deployment was not confirmed.');
