@@ -120,7 +120,9 @@ export function TradePanel({
     tradingStatus.isLoading ||
     !tradingStatus.data?.enabled ||
     sessionQuery.isLoading;
-  const relayerEnabled = process.env.NEXT_PUBLIC_POLY_ENABLE_RELAYER === '1';
+  const relayerEnabled =
+    process.env.NEXT_PUBLIC_POLY_ENABLE_RELAYER === '1' &&
+    TRADE_CONFIG.signatureType !== 3;
 
   useEffect(() => {
     if (!bookSelectionPrice || !Number.isFinite(bookSelectionPrice)) return;
@@ -387,6 +389,12 @@ export function TradePanel({
         throw new Error('Magic Link proxy address unavailable.');
       }
       return proxy;
+    }
+    if (TRADE_CONFIG.signatureType === 3) {
+      if (!proxyWalletAddress) {
+        throw new Error('Deposit wallet funder address unavailable for POLY_1271.');
+      }
+      return proxyWalletAddress;
     }
     if (proxyWalletAddress || relayerProxy) {
       return proxyWalletAddress ?? relayerProxy ?? '';
