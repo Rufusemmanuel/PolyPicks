@@ -403,6 +403,15 @@ export const executeDepositWalletBatch = async ({
   if (BigInt(resolvedDeadline) <= BigInt(Math.floor(Date.now() / 1000))) {
     throw new Error('Deposit wallet batch deadline must be in the future.');
   }
+  console.info('[polymarket]', {
+    event: 'Signing DepositWallet WALLET batch',
+    component: 'relayer',
+    owner,
+    depositWalletAddress: walletAddress,
+    nonce: noncePayload.nonce,
+    deadline: resolvedDeadline,
+    callCount: calls.length,
+  });
   const signature = await walletClient.signTypedData({
     account: owner,
     domain: {

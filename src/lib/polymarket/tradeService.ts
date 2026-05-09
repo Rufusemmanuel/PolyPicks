@@ -149,6 +149,14 @@ const createAndPostOrderOnce = async ({
     host: TRADE_CONFIG.clobHost,
     builderConfig: { builderCode },
   });
+  console.info('[polymarket]', {
+    event: signatureType === 3 ? 'signing_clob_poly_1271_order' : 'signing_clob_order',
+    component: 'trade_service',
+    signatureType,
+    authAddress,
+    funderAddress,
+    tokenIdPrefix: tokenId.slice(0, 12),
+  });
 
   const tickSizeValue =
     typeof tickSize === 'number'
@@ -232,6 +240,7 @@ const createAndPostOrderOnce = async ({
         maker: normalized.maker,
         signer: normalized.signer,
         funderAddress,
+        signatureType: normalized.signatureType,
         signatureLength: normalized.signature.length,
       });
       throw new Error('Deposit wallet order was not signed as POLY_1271.');

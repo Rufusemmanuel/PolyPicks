@@ -19,7 +19,6 @@ const addressSchema = z
 const signatureSchema = z
   .string()
   .regex(HEX_STRING_RE, 'Invalid hex signature.')
-  .refine((value) => value.length === 132, 'Signature must be 65 bytes (132 chars).')
   .refine((value) => (value.length - 2) % 2 === 0, 'Signature hex length invalid.');
 
 export const SignedOrderSchema = z.object({
@@ -61,9 +60,6 @@ const normalizeSignature = (value: unknown, field: string) => {
   }
   if (!HEX_STRING_RE.test(value)) {
     throw new Error(`${field} must be a 0x-prefixed hex string.`);
-  }
-  if (value.length !== 132) {
-    throw new Error(`${field} must be 65 bytes (132 chars).`);
   }
   if ((value.length - 2) % 2 !== 0) {
     throw new Error(`${field} must have an even-length hex payload.`);
