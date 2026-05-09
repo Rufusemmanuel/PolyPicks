@@ -431,7 +431,7 @@ export const usePolymarketSession = (
 
   const ensureDepositWalletApprovals = useCallback(
     async (token: string, spender: string, amount: bigint) => {
-      if (!relayClient) {
+      if (!relayClient || !walletClient || !address) {
         throw new Error('Relayer client not ready.');
       }
       const walletAddress = await ensureDepositWalletDeployed({ force: true });
@@ -452,12 +452,21 @@ export const usePolymarketSession = (
       });
       await executeDepositWalletBatch({
         client: relayClient,
+        walletClient,
+        ownerAddress: address,
         walletAddress,
         calls: [{ target: token, data, value: '0' }],
       });
       await syncBalanceAllowance({ assetType: 'COLLATERAL' });
     },
-    [ensureDepositWalletDeployed, publicClient, relayClient, syncBalanceAllowance],
+    [
+      address,
+      ensureDepositWalletDeployed,
+      publicClient,
+      relayClient,
+      syncBalanceAllowance,
+      walletClient,
+    ],
   );
 
   const ensureOperatorApproval = useCallback(

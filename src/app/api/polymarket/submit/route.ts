@@ -14,6 +14,7 @@ const getRelayerSubmitUrl = () => {
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const HEX_RE = /^0x[0-9a-fA-F]*$/;
+const HEX_65_BYTE_SIGNATURE_RE = /^0x[0-9a-fA-F]{130}$/;
 const DEPOSIT_WALLET_TYPES = new Set(['WALLET', 'WALLET-CREATE']);
 
 const readBuilderCredentials = () => {
@@ -48,14 +49,24 @@ const sanitizeRelayerPayload = (payload: Record<string, unknown>) => {
     if (!signature) errors.push('signature is required.');
   }
   if (type === 'WALLET') {
-    if (!signature) errors.push('signature is required.');
+    if (!signature) {
+      errors.push('signature is required.');
+    } else if (!HEX_65_BYTE_SIGNATURE_RE.test(signature)) {
+      errors.push('WALLET signature must be a normal 65-byte EIP-712 signature.');
+    }
     if (!depositWalletParams) {
       errors.push('depositWalletParams is required for WALLET transactions.');
     } else {
       const depositWallet = depositWalletParams.depositWallet;
+      const deadline = depositWalletParams.deadline;
       const calls = depositWalletParams.calls;
       if (typeof depositWallet !== 'string' || !ADDRESS_RE.test(depositWallet)) {
         errors.push('depositWalletParams.depositWallet must be an address.');
+      }
+      if (typeof deadline !== 'string' || !/^\d+$/.test(deadline)) {
+        errors.push('depositWalletParams.deadline must be a numeric string.');
+      } else if (BigInt(deadline) <= BigInt(Math.floor(Date.now() / 1000))) {
+        errors.push('depositWalletParams.deadline must be in the future.');
       }
       if (!Array.isArray(calls) || !calls.length) {
         errors.push('depositWalletParams.calls must be a non-empty array.');

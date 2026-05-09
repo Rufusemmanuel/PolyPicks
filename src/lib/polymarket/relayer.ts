@@ -1,6 +1,5 @@
 import {
   CallType,
-  buildDepositWalletBatchRequest,
   buildDepositWalletCreateRequest,
   type DepositWalletCall,
   OperationType,
@@ -30,6 +29,20 @@ const RELAYER_ENV_URL = process.env.NEXT_PUBLIC_POLY_RELAYER_URL;
 const CHAIN_ID = 137;
 const STORAGE_PREFIX = 'polymarket:safe:';
 const SESSION_PREFIX = 'polymarket:relayer-session:';
+const DEPOSIT_WALLET_BATCH_TYPES = {
+  Call: [
+    { name: 'target', type: 'address' },
+    { name: 'value', type: 'uint256' },
+    { name: 'data', type: 'bytes' },
+  ],
+  Batch: [
+    { name: 'wallet', type: 'address' },
+    { name: 'nonce', type: 'uint256' },
+    { name: 'deadline', type: 'uint256' },
+    { name: 'calls', type: 'Call[]' },
+  ],
+} as const;
+const HEX_65_BYTE_SIGNATURE_RE = /^0x[0-9a-fA-F]{130}$/;
 
 const getRelayerUrl = () => {
   if (RELAYER_ENV_URL && /^https?:\/\//.test(RELAYER_ENV_URL)) {
@@ -366,36 +379,66 @@ export const ensureDepositWalletDeployed = async (client: RelayClient) => {
 
 export const executeDepositWalletBatch = async ({
   client,
+  walletClient,
+  ownerAddress,
   walletAddress,
   calls,
   deadline,
 }: {
   client: RelayClient;
+  walletClient: WalletClient;
+  ownerAddress: `0x${string}`;
   walletAddress: string;
   calls: DepositWalletCall[];
   deadline?: string;
 }) => {
-  const signer = getClientSigner(client);
-  const owner = await signer.getAddress();
   const depositWalletConfig = client.contractConfig.DepositWalletContracts;
   if (!isDepositWalletContractConfigValid(depositWalletConfig)) {
     throw new Error('Deposit wallet config unsupported on Polygon.');
   }
+  const owner = ownerAddress;
   const noncePayload = await client.getNonce(owner, 'WALLET');
   const resolvedDeadline =
     deadline ?? Math.floor(Date.now() / 1000 + 10 * 60).toString();
-  const request = await buildDepositWalletBatchRequest(
-    signer,
-    {
-      from: owner,
+  if (BigInt(resolvedDeadline) <= BigInt(Math.floor(Date.now() / 1000))) {
+    throw new Error('Deposit wallet batch deadline must be in the future.');
+  }
+  const signature = await walletClient.signTypedData({
+    account: owner,
+    domain: {
+      name: 'DepositWallet',
+      version: '1',
       chainId: CHAIN_ID,
-      walletAddress,
-      nonce: noncePayload.nonce,
+      verifyingContract: walletAddress as `0x${string}`,
+    },
+    types: DEPOSIT_WALLET_BATCH_TYPES,
+    primaryType: 'Batch',
+    message: {
+      wallet: walletAddress as `0x${string}`,
+      nonce: BigInt(noncePayload.nonce),
+      deadline: BigInt(resolvedDeadline),
+      calls: calls.map((call) => ({
+        target: call.target as `0x${string}`,
+        value: BigInt(call.value),
+        data: call.data as `0x${string}`,
+      })),
+    },
+  });
+  if (!HEX_65_BYTE_SIGNATURE_RE.test(signature)) {
+    throw new Error('Deposit wallet WALLET batch signature must be a 65-byte EIP-712 signature.');
+  }
+  const request = {
+    type: 'WALLET',
+    from: owner,
+    to: depositWalletConfig.DepositWalletFactory,
+    nonce: noncePayload.nonce,
+    signature,
+    depositWalletParams: {
+      depositWallet: walletAddress,
       deadline: resolvedDeadline,
       calls,
     },
-    depositWalletConfig,
-  );
+  };
   console.info('[polymarket]', {
     event: 'deposit_wallet_batch_forwarded',
     component: 'relayer',
@@ -403,6 +446,8 @@ export const executeDepositWalletBatch = async ({
     depositWalletAddress: walletAddress,
     calls: calls.length,
     nonce: noncePayload.nonce,
+    deadline: resolvedDeadline,
+    signatureLength: signature.length,
   });
   const response = buildRelayerResponse(client, await submitRelayerRequest(request));
   await waitForRelayerResponse(response, 'Deposit wallet batch failed.');
