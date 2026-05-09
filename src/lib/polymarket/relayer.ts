@@ -86,6 +86,16 @@ type RelayerSubmitResponse = {
   details?: unknown;
 };
 
+const BUILDER_AUTH_MISCONFIGURED_MESSAGE =
+  'Builder relayer authentication is misconfigured. The backend should use Builder API Key auth, not wallet-scoped Relayer API Key auth.';
+
+const normalizeSubmitErrorMessage = (message: string) => {
+  if (/does not match auth/i.test(message)) {
+    return BUILDER_AUTH_MISCONFIGURED_MESSAGE;
+  }
+  return message;
+};
+
 const readSessionCache = (key: string) => {
   if (typeof window === 'undefined') return null;
   const raw = window.localStorage.getItem(key);
@@ -160,7 +170,7 @@ const submitRelayerRequest = async (
       upstream?.error ??
       data?.error ??
       `Relayer request failed (${res.status}).`;
-    throw new Error(message);
+    throw new Error(normalizeSubmitErrorMessage(message));
   }
   return data;
 };

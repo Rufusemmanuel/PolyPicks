@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { BuilderSigner } from '@polymarket/builder-signing-sdk';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -12,15 +13,16 @@ const getRelayerSubmitUrl = () => {
 };
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
-const SAFE_RELAYER_TYPES = new Set(['SAFE', 'PROXY', 'SAFE-CREATE']);
+const HEX_RE = /^0x[0-9a-fA-F]*$/;
 
-const readRelayerCredentials = () => {
-  const apiKey = process.env.POLYMARKET_RELAYER_API_KEY;
-  const apiKeyAddress = process.env.POLYMARKET_RELAYER_API_KEY_ADDRESS;
-  if (!apiKey || !apiKeyAddress) {
+const readBuilderCredentials = () => {
+  const key = process.env.POLYMARKET_BUILDER_API_KEY;
+  const secret = process.env.POLYMARKET_BUILDER_SECRET;
+  const passphrase = process.env.POLYMARKET_BUILDER_PASSPHRASE;
+  if (!key || !secret || !passphrase) {
     return null;
   }
-  return { apiKey, apiKeyAddress };
+  return { key, secret, passphrase };
 };
 
 const sanitizeRelayerPayload = (payload: Record<string, unknown>) => {
@@ -33,18 +35,11 @@ const sanitizeRelayerPayload = (payload: Record<string, unknown>) => {
     typeof payload.proxyWallet === 'string' ? payload.proxyWallet : undefined;
 
   const errors: string[] = [];
-  if (!type || !SAFE_RELAYER_TYPES.has(type)) errors.push('type must be SAFE, PROXY, or SAFE-CREATE.');
+  if (!type) errors.push('type is required.');
   if (!from || !ADDRESS_RE.test(from)) errors.push('from must be the connected wallet address.');
   if (!to || !ADDRESS_RE.test(to)) errors.push('to must be an address.');
-  if (!data || !data.startsWith('0x')) errors.push('data must be hex.');
-  if (!signature || !signature.startsWith('0x')) errors.push('signature must be hex.');
-
-  if ((type === 'SAFE' || type === 'PROXY' || type === 'SAFE-CREATE') && !proxyWallet) {
-    errors.push('proxyWallet is required for Safe/proxy relayer submissions.');
-  }
-  if (proxyWallet && !ADDRESS_RE.test(proxyWallet)) {
-    errors.push('proxyWallet must be an address.');
-  }
+  if (!data || !HEX_RE.test(data)) errors.push('data must be hex.');
+  if (!signature) errors.push('signature is required.');
 
   return {
     errors,
@@ -77,12 +72,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const creds = readRelayerCredentials();
+  const creds = readBuilderCredentials();
   if (!creds) {
     return NextResponse.json(
       {
         ok: false,
-        error: 'Missing Polymarket relayer credentials on server',
+        error: 'Missing Polymarket builder relayer credentials on server',
       },
       { status: 500, headers: { 'Cache-Control': 'no-store' } },
     );
@@ -107,6 +102,11 @@ export async function POST(request: NextRequest) {
   }
 
   const body = JSON.stringify(payload);
+  const builderHeaders = new BuilderSigner(creds).createBuilderHeaderPayload(
+    'POST',
+    '/submit',
+    body,
+  );
   try {
     console.info('[polymarket]', {
       event: 'relayer_submit_forwarded',
@@ -118,8 +118,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        RELAYER_API_KEY: creds.apiKey,
-        RELAYER_API_KEY_ADDRESS: creds.apiKeyAddress,
+        ...builderHeaders,
       },
       body,
     });

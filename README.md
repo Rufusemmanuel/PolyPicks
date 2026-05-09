@@ -15,7 +15,9 @@ Next.js 14 + Prisma dashboard for Polymarket markets.
 - Optional admin/reporting credentials:
   - `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, and `POLYMARKET_PASSPHRASE` are only used by builder analytics/reporting utilities.
   - `POLYMARKET_PRIVATE_KEY` is only used by local live-attribution/admin scripts.
-  - `POLYMARKET_RELAYER_API_KEY` and `POLYMARKET_RELAYER_API_KEY_ADDRESS` are server-only credentials for forwarding Safe/proxy relayer `/submit` requests. Never expose them with `NEXT_PUBLIC_`.
+- Server-only builder relayer credentials:
+  - `POLYMARKET_BUILDER_API_KEY`, `POLYMARKET_BUILDER_SECRET`, and `POLYMARKET_BUILDER_PASSPHRASE` are used only by `/api/polymarket/submit` to forward user-signed Safe/proxy/deposit-wallet transactions to Polymarket relayer `/submit`.
+  - Do not configure wallet-scoped relayer credentials for the builder submit path, and never expose builder credentials with `NEXT_PUBLIC_`.
 - Optional client flags:
   - `NEXT_PUBLIC_CLOB_DEBUG=false`
   - `NEXT_PUBLIC_FORCE_EOA=false`
@@ -34,6 +36,7 @@ Next.js 14 + Prisma dashboard for Polymarket markets.
   - Optional: set `ALLOW_DB_RESET_ON_FAILED_MIGRATIONS=1` to auto-reset a fresh database on failed migrations.
 - Do not run `prisma db pull` against production; it can overwrite `prisma/schema.prisma` and drop models that are not yet present in the database.
 - For user-wallet trading deployments, the required trading runtime vars are only `ENABLE_TRADING=true`, `POLYMARKET_BUILDER_CODE`, and `POLYPICKS_SESSION_SECRET`. Server-side Polymarket API credentials and private keys are optional admin/reporting inputs, not trading blockers.
+- For relayer-backed Safe/proxy/deposit-wallet transactions, configure server-only Builder API credentials: `POLYMARKET_BUILDER_API_KEY`, `POLYMARKET_BUILDER_SECRET`, and `POLYMARKET_BUILDER_PASSPHRASE`.
 
 The app uses the Polymarket Gamma/Data API and an optional RTDS WebSocket for live prices.
 

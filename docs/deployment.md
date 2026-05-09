@@ -22,8 +22,9 @@ Set `NEXT_PUBLIC_POLY_SIGNATURE_TYPE` to the wallet model being used: `0` for di
 | `POLYMARKET_SECRET` | Builder analytics/reporting client credential. Not used for user order signing. |
 | `POLYMARKET_PASSPHRASE` | Builder analytics/reporting client credential. Not used for user order signing. |
 | `POLYMARKET_PRIVATE_KEY` | Local live-attribution/admin script signer only. Do not configure it for normal app trading. |
-| `POLYMARKET_RELAYER_API_KEY` | Server-only credential for forwarding Safe/proxy relayer `/submit` requests. Not exposed to the browser. |
-| `POLYMARKET_RELAYER_API_KEY_ADDRESS` | Address paired with `POLYMARKET_RELAYER_API_KEY`. Not exposed to the browser. |
+| `POLYMARKET_BUILDER_API_KEY` | Server-only Builder API key for forwarding user-signed relayer `/submit` payloads. Required only when relayer-backed Safe/proxy/deposit-wallet transactions are enabled. |
+| `POLYMARKET_BUILDER_SECRET` | Server-only Builder API secret used to sign `/submit` requests. Required only with the builder relayer submit path. |
+| `POLYMARKET_BUILDER_PASSPHRASE` | Server-only Builder API passphrase sent with builder-authenticated `/submit` requests. Required only with the builder relayer submit path. |
 
 ## User order path
 
@@ -32,4 +33,4 @@ Set `NEXT_PUBLIC_POLY_SIGNATURE_TYPE` to the wallet model being used: `0` for di
 3. `POLYMARKET_BUILDER_CODE` is added before signing and becomes the signed V2 `order.builder` field.
 4. The backend validates `order.builder`, uses the user-derived L2 session to post the signed order, and never creates a custodial order.
 5. If CLOB returns `401 invalid authorization`, the backend clears the stale user L2 session so the browser can re-derive credentials from the connected wallet and retry.
-6. Safe/proxy relayer transactions are signed in the browser, then submitted through `/api/polymarket/submit`; only the backend forwards to Polymarket relayer `/submit` with `RELAYER_API_KEY` headers.
+6. Safe/proxy/deposit-wallet relayer transactions are signed in the browser, then submitted through `/api/polymarket/submit`; only the backend forwards the untouched user-signed payload to Polymarket relayer `/submit` with Builder API auth headers.
