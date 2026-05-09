@@ -6,9 +6,10 @@ import { polygon } from 'viem/chains';
 export const runtime = 'nodejs';
 
 const RELAYER_URL =
-  process.env.NEXT_PUBLIC_POLY_RELAYER_URL ?? 'https://relayer-v2.polymarket.com/';
+  process.env.POLYMARKET_RELAYER_URL ??
+  process.env.NEXT_PUBLIC_POLY_RELAYER_URL ??
+  'https://relayer-v2.polymarket.com/';
 const CHAIN_ID = 137;
-const ENABLE_SERVER_DEPLOY = process.env.POLY_RELAYER_ALLOW_SERVER_DEPLOY === '1';
 const DEPLOY_CACHE_TTL_MS = 60_000;
 const deployCache = new Map<
   string,
@@ -82,13 +83,6 @@ export async function POST(request: NextRequest) {
     ).getExpectedSafe();
     let deployed = await relayClient.getDeployed(expectedSafe);
     let proxyAddress = expectedSafe;
-
-    if (!deployed && ENABLE_SERVER_DEPLOY) {
-      const deployResponse = await relayClient.deploy();
-      const result = await deployResponse.wait();
-      proxyAddress = result?.proxyAddress ?? expectedSafe;
-      deployed = await relayClient.getDeployed(proxyAddress);
-    }
 
     deployCache.set(addressKey, {
       proxyWalletAddress: proxyAddress,

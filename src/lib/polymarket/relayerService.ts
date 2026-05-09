@@ -1,5 +1,6 @@
 import { RelayClient, RelayerTxType } from '@polymarket/builder-relayer-client';
 import type { WalletClient } from 'viem';
+import { deploySafeIfNeeded } from '@/lib/polymarket/relayer';
 
 type BuilderConfig = ConstructorParameters<typeof RelayClient>[3];
 
@@ -22,6 +23,13 @@ type RelayerDeployResponse = {
   proxyWalletAddress?: string;
   deployed?: boolean;
   error?: string;
+};
+
+const getWalletAddress = async (walletClient: WalletClient) => {
+  if (walletClient.account?.address) return walletClient.account.address;
+  const [address] = await walletClient.getAddresses();
+  if (!address) throw new Error('Wallet address unavailable.');
+  return address;
 };
 
 const relayerProxyCache = new Map<
@@ -52,9 +60,7 @@ export const createRelayerService = async ({
   let deployed = await relayClient.getDeployed(expectedSafe);
   const ensureDeployed = async () => {
     if (deployed) return expectedSafe;
-    const deployResponse = await relayClient.deploy();
-    const result = await deployResponse.wait();
-    const proxy = result?.proxyAddress ?? expectedSafe;
+    const proxy = await deploySafeIfNeeded(relayClient, await getWalletAddress(walletClient));
     deployed = await relayClient.getDeployed(proxy);
     return proxy;
   };

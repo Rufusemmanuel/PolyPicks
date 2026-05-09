@@ -15,6 +15,7 @@ Next.js 14 + Prisma dashboard for Polymarket markets.
 - Optional admin/reporting credentials:
   - `POLYMARKET_API_KEY`, `POLYMARKET_SECRET`, and `POLYMARKET_PASSPHRASE` are only used by builder analytics/reporting utilities.
   - `POLYMARKET_PRIVATE_KEY` is only used by local live-attribution/admin scripts.
+  - `POLYMARKET_RELAYER_API_KEY` and `POLYMARKET_RELAYER_API_KEY_ADDRESS` are server-only credentials for forwarding Safe/proxy relayer `/submit` requests. Never expose them with `NEXT_PUBLIC_`.
 - Optional client flags:
   - `NEXT_PUBLIC_CLOB_DEBUG=false`
   - `NEXT_PUBLIC_FORCE_EOA=false`

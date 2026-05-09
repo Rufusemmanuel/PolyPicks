@@ -1,5 +1,21 @@
-import { RelayClient, RelayerTxType } from '@polymarket/builder-relayer-client';
+import {
+  CallType,
+  OperationType,
+  RelayClient,
+  RelayerTransactionState,
+  RelayerTxType,
+  type RelayerTransaction,
+  type RelayerTransactionResponse,
+  type TransactionRequest,
+} from '@polymarket/builder-relayer-client';
+import { buildSafeCreateTransactionRequest } from '@polymarket/builder-relayer-client/dist/builder/create';
+import { deriveSafe } from '@polymarket/builder-relayer-client/dist/builder/derive';
+import { buildProxyTransactionRequest } from '@polymarket/builder-relayer-client/dist/builder/proxy';
+import { buildSafeTransactionRequest } from '@polymarket/builder-relayer-client/dist/builder/safe';
+import { encodeProxyTransactionData } from '@polymarket/builder-relayer-client/dist/encode';
+import { isProxyContractConfigValid, isSafeContractConfigValid } from '@polymarket/builder-relayer-client/dist/config';
 import type { WalletClient } from 'viem';
+import { zeroAddress } from 'viem';
 import { ensureTradingSession } from '@/lib/polymarket/tradeService';
 import { createViemSigner } from '@/lib/wallet/viemSigner';
 
@@ -58,6 +74,18 @@ const getSessionCacheKey = (
 
 const SESSION_TTL_MS = 10 * 60 * 1000;
 
+type RelayerSubmitResponse = {
+  ok?: boolean;
+  transactionID?: string;
+  transactionId?: string;
+  id?: string;
+  state?: string;
+  transactionHash?: string;
+  hash?: string;
+  error?: string;
+  details?: unknown;
+};
+
 const readSessionCache = (key: string) => {
   if (typeof window === 'undefined') return null;
   const raw = window.localStorage.getItem(key);
@@ -101,6 +129,151 @@ const isSessionNotInitializedError = (error: unknown) => {
   return false;
 };
 
+const parseRelayerErrorMessage = (value: unknown) => {
+  if (value instanceof Error) return value.message;
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const candidate = value as { error?: unknown; message?: unknown; details?: unknown };
+    if (typeof candidate.error === 'string') return candidate.error;
+    if (typeof candidate.message === 'string') return candidate.message;
+    if (candidate.details) return JSON.stringify(candidate.details);
+  }
+  return 'Relayer request failed.';
+};
+
+const submitRelayerRequest = async (
+  request: TransactionRequest,
+): Promise<RelayerSubmitResponse> => {
+  const res = await fetch('/api/polymarket/submit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  const data = (await res.json().catch(() => null)) as RelayerSubmitResponse | null;
+  if (!res.ok || !data) {
+    const upstream =
+      data?.details && typeof data.details === 'object'
+        ? (data.details as { data?: { error?: string }; error?: string })
+        : null;
+    const message =
+      upstream?.data?.error ??
+      upstream?.error ??
+      data?.error ??
+      `Relayer request failed (${res.status}).`;
+    throw new Error(message);
+  }
+  return data;
+};
+
+const buildRelayerResponse = (
+  client: RelayClient,
+  response: RelayerSubmitResponse,
+): RelayerTransactionResponse => {
+  const transactionID = response.transactionID ?? response.transactionId ?? response.id;
+  if (!transactionID) {
+    throw new Error('Relayer response missing transaction id.');
+  }
+  const transactionHash = response.transactionHash ?? response.hash ?? '';
+  return {
+    transactionID,
+    transactionHash,
+    hash: transactionHash,
+    state: response.state ?? RelayerTransactionState.STATE_NEW,
+    getTransaction: () => client.getTransaction(transactionID),
+    wait: () =>
+      client.pollUntilState(
+        transactionID,
+        [
+          RelayerTransactionState.STATE_MINED,
+          RelayerTransactionState.STATE_CONFIRMED,
+        ],
+        RelayerTransactionState.STATE_FAILED,
+        100,
+      ) as Promise<RelayerTransaction | undefined>,
+  };
+};
+
+const getClientSigner = (client: RelayClient) => {
+  if (!client.signer) {
+    throw new Error('Relayer signer unavailable.');
+  }
+  return client.signer;
+};
+
+const getExpectedSafe = async (client: RelayClient) => {
+  const signer = getClientSigner(client);
+  const address = await signer.getAddress();
+  return deriveSafe(address, client.contractConfig.SafeContracts.SafeFactory);
+};
+
+const buildExecuteRequest = async ({
+  client,
+  txns,
+  metadata,
+  txType,
+}: {
+  client: RelayClient;
+  txns: Array<{ to: string; data: string; value?: string }>;
+  metadata?: string;
+  txType: RelayerTxType;
+}) => {
+  const signer = getClientSigner(client);
+  const from = await signer.getAddress();
+  if (txType === RelayerTxType.PROXY) {
+    const relayPayload = await client.getRelayPayload(from, 'PROXY');
+    const proxyContractConfig = client.contractConfig.ProxyContracts;
+    if (!isProxyContractConfigValid(proxyContractConfig)) {
+      throw new Error('Relayer proxy config unsupported on Polygon.');
+    }
+    return buildProxyTransactionRequest(
+      signer,
+      {
+        from,
+        gasPrice: '0',
+        data: encodeProxyTransactionData(
+          txns.map((txn) => ({
+            to: txn.to,
+            typeCode: CallType.Call,
+            data: txn.data,
+            value: txn.value ?? '0',
+          })),
+        ),
+        relay: relayPayload.address,
+        nonce: relayPayload.nonce,
+      },
+      proxyContractConfig,
+      metadata,
+    );
+  }
+
+  const safe = await getExpectedSafe(client);
+  const deployed = await client.getDeployed(safe);
+  if (!deployed) {
+    throw new Error('Safe is not deployed.');
+  }
+  const noncePayload = await client.getNonce(from, 'SAFE');
+  const safeContractConfig = client.contractConfig.SafeContracts;
+  if (!isSafeContractConfigValid(safeContractConfig)) {
+    throw new Error('Relayer Safe config unsupported on Polygon.');
+  }
+  return buildSafeTransactionRequest(
+    signer,
+    {
+      transactions: txns.map((txn) => ({
+        to: txn.to,
+        operation: OperationType.Call,
+        data: txn.data,
+        value: txn.value ?? '0',
+      })),
+      from,
+      nonce: noncePayload.nonce,
+      chainId: CHAIN_ID,
+    },
+    safeContractConfig,
+    metadata,
+  );
+};
+
 export const executeRelayerTransactions = async ({
   client,
   walletClient,
@@ -118,25 +291,15 @@ export const executeRelayerTransactions = async ({
 }) => {
   await ensureRelayerSession({ walletClient, address, txType });
   try {
-    return await client.execute(
-      txns.map((txn) => ({
-        to: txn.to,
-        data: txn.data,
-        value: txn.value ?? '0',
-      })),
-      metadata,
-    );
+    const request = await buildExecuteRequest({ client, txns, metadata, txType });
+    const response = await submitRelayerRequest(request);
+    return buildRelayerResponse(client, response);
   } catch (error) {
-    if (isSessionNotInitializedError(error)) {
+    if (isSessionNotInitializedError(error) || parseRelayerErrorMessage(error).includes('invalid authorization')) {
       await ensureRelayerSession({ walletClient, address, force: true, txType });
-      return client.execute(
-        txns.map((txn) => ({
-          to: txn.to,
-          data: txn.data,
-          value: txn.value ?? '0',
-        })),
-        metadata,
-      );
+      const request = await buildExecuteRequest({ client, txns, metadata, txType });
+      const response = await submitRelayerRequest(request);
+      return buildRelayerResponse(client, response);
     }
     throw error;
   }
@@ -147,16 +310,26 @@ export const deploySafeIfNeeded = async (
   eoaAddress: string,
 ) => {
   const cached = loadStoredProxyAddress(eoaAddress);
-  const expectedSafe = await (
-    client as unknown as { getExpectedSafe: () => Promise<string> }
-  ).getExpectedSafe();
+  const expectedSafe = await getExpectedSafe(client);
   const candidate = cached ?? expectedSafe;
   const deployed = await client.getDeployed(candidate);
   if (deployed) {
     storeProxyAddress(eoaAddress, candidate);
     return candidate;
   }
-  const response = await client.deploy();
+  const signer = getClientSigner(client);
+  const request = await buildSafeCreateTransactionRequest(
+    signer,
+    client.contractConfig.SafeContracts,
+    {
+      from: eoaAddress,
+      chainId: CHAIN_ID,
+      paymentToken: zeroAddress,
+      payment: '0',
+      paymentReceiver: zeroAddress,
+    },
+  );
+  const response = buildRelayerResponse(client, await submitRelayerRequest(request));
   const result = await response.wait();
   const proxy = result?.proxyAddress ?? expectedSafe;
   storeProxyAddress(eoaAddress, proxy);
