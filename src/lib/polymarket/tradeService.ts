@@ -42,6 +42,20 @@ type OrderResponse = {
   details?: unknown;
 };
 
+const DEPOSIT_WALLET_REQUIRED_MESSAGE =
+  'This account must trade through a Polymarket deposit wallet. Please deploy/fund your deposit wallet before trading.';
+
+const sameAddress = (left: string, right: string) =>
+  left.toLowerCase() === right.toLowerCase();
+
+const normalizeOrderErrorMessage = (message: string, details?: unknown) => {
+  const haystack = `${message} ${details ? JSON.stringify(details) : ''}`;
+  if (/maker address not allowed|deposit wallet flow/i.test(haystack)) {
+    return DEPOSIT_WALLET_REQUIRED_MESSAGE;
+  }
+  return message;
+};
+
 const safeJson = async <T,>(res: Response): Promise<T | null> => {
   const text = await res.text().catch(() => '');
   if (!text) return null;
@@ -203,6 +217,26 @@ const createAndPostOrderOnce = async ({
 
   const normalized = normalizeSignedOrder(signedOrder);
   assertSignedOrderBuilder(normalized.builder, builderCode);
+  if (signatureType === 3) {
+    if (
+      normalized.signatureType !== 3 ||
+      !sameAddress(normalized.maker, funderAddress) ||
+      !sameAddress(normalized.signer, funderAddress) ||
+      normalized.signature.length <= 132
+    ) {
+      console.error('[polymarket]', {
+        event: 'deposit_wallet_order_shape_invalid',
+        component: 'trade_service',
+        expectedSignatureType: 3,
+        actualSignatureType: normalized.signatureType,
+        maker: normalized.maker,
+        signer: normalized.signer,
+        funderAddress,
+        signatureLength: normalized.signature.length,
+      });
+      throw new Error('Deposit wallet order was not signed as POLY_1271.');
+    }
+  }
   console.info('[polymarket]', {
     event: 'signed_order_ready',
     component: 'trade_service',
@@ -213,6 +247,7 @@ const createAndPostOrderOnce = async ({
     signatureType: normalized.signatureType,
     maker: normalized.maker,
     signer: normalized.signer,
+    depositWalletAddress: signatureType === 3 ? funderAddress : null,
     authAddress,
     funderAddress,
     signatureLength: normalized.signature.length,
@@ -241,7 +276,7 @@ const createAndPostOrderOnce = async ({
     return {
       ok: false,
       code: (data as { code?: string })?.code,
-      error: errorText,
+      error: normalizeOrderErrorMessage(errorText, details),
       ...(details ? { details } : {}),
       data,
     };

@@ -14,6 +14,7 @@ const getRelayerSubmitUrl = () => {
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const HEX_RE = /^0x[0-9a-fA-F]*$/;
+const DEPOSIT_WALLET_TYPES = new Set(['WALLET', 'WALLET-CREATE']);
 
 const readBuilderCredentials = () => {
   const key = process.env.POLYMARKET_BUILDER_API_KEY;
@@ -33,13 +34,51 @@ const sanitizeRelayerPayload = (payload: Record<string, unknown>) => {
   const signature = typeof payload.signature === 'string' ? payload.signature : null;
   const proxyWallet =
     typeof payload.proxyWallet === 'string' ? payload.proxyWallet : undefined;
+  const depositWalletParams =
+    payload.depositWalletParams && typeof payload.depositWalletParams === 'object'
+      ? payload.depositWalletParams as Record<string, unknown>
+      : null;
 
   const errors: string[] = [];
   if (!type) errors.push('type is required.');
   if (!from || !ADDRESS_RE.test(from)) errors.push('from must be the connected wallet address.');
   if (!to || !ADDRESS_RE.test(to)) errors.push('to must be an address.');
-  if (!data || !HEX_RE.test(data)) errors.push('data must be hex.');
-  if (!signature) errors.push('signature is required.');
+  if (type && !DEPOSIT_WALLET_TYPES.has(type)) {
+    if (!data || !HEX_RE.test(data)) errors.push('data must be hex.');
+    if (!signature) errors.push('signature is required.');
+  }
+  if (type === 'WALLET') {
+    if (!signature) errors.push('signature is required.');
+    if (!depositWalletParams) {
+      errors.push('depositWalletParams is required for WALLET transactions.');
+    } else {
+      const depositWallet = depositWalletParams.depositWallet;
+      const calls = depositWalletParams.calls;
+      if (typeof depositWallet !== 'string' || !ADDRESS_RE.test(depositWallet)) {
+        errors.push('depositWalletParams.depositWallet must be an address.');
+      }
+      if (!Array.isArray(calls) || !calls.length) {
+        errors.push('depositWalletParams.calls must be a non-empty array.');
+      } else {
+        calls.forEach((call, index) => {
+          if (!call || typeof call !== 'object') {
+            errors.push(`depositWalletParams.calls[${index}] must be an object.`);
+            return;
+          }
+          const item = call as Record<string, unknown>;
+          if (typeof item.target !== 'string' || !ADDRESS_RE.test(item.target)) {
+            errors.push(`depositWalletParams.calls[${index}].target must be an address.`);
+          }
+          if (typeof item.data !== 'string' || !HEX_RE.test(item.data)) {
+            errors.push(`depositWalletParams.calls[${index}].data must be hex.`);
+          }
+          if (typeof item.value !== 'string' || !/^\d+$/.test(item.value)) {
+            errors.push(`depositWalletParams.calls[${index}].value must be a numeric string.`);
+          }
+        });
+      }
+    }
+  }
 
   return {
     errors,
@@ -48,6 +87,10 @@ const sanitizeRelayerPayload = (payload: Record<string, unknown>) => {
       from,
       to,
       proxyWallet: proxyWallet ?? null,
+      depositWallet:
+        typeof depositWalletParams?.depositWallet === 'string'
+          ? depositWalletParams.depositWallet
+          : null,
       hasSignature: Boolean(signature),
       dataLength: data?.length ?? 0,
     },

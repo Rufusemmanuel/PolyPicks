@@ -41,6 +41,15 @@ const sameAddress = (left: unknown, right: unknown) =>
   typeof left === 'string' &&
   typeof right === 'string' &&
   left.toLowerCase() === right.toLowerCase();
+const DEPOSIT_WALLET_REQUIRED_MESSAGE =
+  'This account must trade through a Polymarket deposit wallet. Please deploy/fund your deposit wallet before trading.';
+const normalizeExchangeError = (message: string, body?: unknown) => {
+  const haystack = `${message} ${body ? JSON.stringify(body) : ''}`;
+  if (/maker address not allowed|deposit wallet flow/i.test(haystack)) {
+    return DEPOSIT_WALLET_REQUIRED_MESSAGE;
+  }
+  return message;
+};
 const redactOrderPayload = (payload: unknown) => {
   if (!payload || typeof payload !== 'object') return payload;
   const copy = structuredClone(payload) as Record<string, unknown>;
@@ -477,7 +486,7 @@ export const createOrderHandler = ({
         return NextResponse.json(
           {
             ok: false,
-            error: 'CLOB error',
+            error: normalizeExchangeError('CLOB error', text),
             details: {
               status: res.status,
               contentType,
@@ -586,7 +595,10 @@ export const createOrderHandler = ({
         return NextResponse.json(
           {
             ok: false,
-            error: (data as { errorMsg?: string }).errorMsg ?? 'Order rejected',
+            error: normalizeExchangeError(
+              (data as { errorMsg?: string }).errorMsg ?? 'Order rejected',
+              data,
+            ),
             details: data,
             sent: sentDebug,
           },

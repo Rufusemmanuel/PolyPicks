@@ -20,9 +20,8 @@ Next.js 14 + Prisma dashboard for Polymarket markets.
   - Do not configure wallet-scoped relayer credentials for the builder submit path, and never expose builder credentials with `NEXT_PUBLIC_`.
 - Optional client flags:
   - `NEXT_PUBLIC_CLOB_DEBUG=false`
-  - `NEXT_PUBLIC_FORCE_EOA=false`
   - `NEXT_PUBLIC_POLY_RELAYER_URL=`
-  - `NEXT_PUBLIC_POLY_SIGNATURE_TYPE=2` for existing Safe proxy users; use `3` only for deposit wallets that require `POLY_1271`.
+  - `NEXT_PUBLIC_POLY_SIGNATURE_TYPE=3` for new deposit-wallet users. Use `1` or `2` only for legacy proxy/Safe accounts.
   - `POLYMARKET_DATA_API_BASE_URL=https://data-api.polymarket.com`
 - For soccer stats, set `FOOTBALL_DATA_API_KEY` in `.env.local` (local dev) or Vercel Project Settings → Environment Variables.
 - Generate Prisma client: `npx prisma generate`
@@ -42,4 +41,4 @@ The app uses the Polymarket Gamma/Data API and an optional RTDS WebSocket for li
 
 Builder-attributed trading uses CLOB V2 `builderCode`. The browser fetches the server-configured bytes32 code before signing, the SDK serializes it into the final order `builder` field, and the server rejects posts where that field is missing or mismatched.
 
-Order signing supports Polymarket V2 signature types `0`, `1`, `2`, and `3`. Existing proxy/Safe wallets use their existing type (`1` or `2`). Deposit-wallet orders must use `3`, with `maker` and `signer` equal to the deposit wallet address.
+Order signing defaults to Polymarket V2 deposit-wallet signature type `3` (`POLY_1271`). Existing proxy/Safe wallets can still use their legacy type (`1` or `2`). Browser user trades do not use normal EOA type `0`.

@@ -1,19 +1,25 @@
 import {
   CallType,
+  buildDepositWalletBatchRequest,
+  buildDepositWalletCreateRequest,
+  type DepositWalletCall,
   OperationType,
   RelayClient,
   RelayerTransactionState,
   RelayerTxType,
   type RelayerTransaction,
   type RelayerTransactionResponse,
-  type TransactionRequest,
 } from '@polymarket/builder-relayer-client';
 import { buildSafeCreateTransactionRequest } from '@polymarket/builder-relayer-client/dist/builder/create';
 import { deriveSafe } from '@polymarket/builder-relayer-client/dist/builder/derive';
 import { buildProxyTransactionRequest } from '@polymarket/builder-relayer-client/dist/builder/proxy';
 import { buildSafeTransactionRequest } from '@polymarket/builder-relayer-client/dist/builder/safe';
 import { encodeProxyTransactionData } from '@polymarket/builder-relayer-client/dist/encode';
-import { isProxyContractConfigValid, isSafeContractConfigValid } from '@polymarket/builder-relayer-client/dist/config';
+import {
+  isDepositWalletContractConfigValid,
+  isProxyContractConfigValid,
+  isSafeContractConfigValid,
+} from '@polymarket/builder-relayer-client/dist/config';
 import type { WalletClient } from 'viem';
 import { zeroAddress } from 'viem';
 import { ensureTradingSession } from '@/lib/polymarket/tradeService';
@@ -152,7 +158,7 @@ const parseRelayerErrorMessage = (value: unknown) => {
 };
 
 const submitRelayerRequest = async (
-  request: TransactionRequest,
+  request: object,
 ): Promise<RelayerSubmitResponse> => {
   const res = await fetch('/api/polymarket/submit', {
     method: 'POST',
@@ -201,6 +207,17 @@ const buildRelayerResponse = (
         100,
       ) as Promise<RelayerTransaction | undefined>,
   };
+};
+
+const waitForRelayerResponse = async (
+  response: RelayerTransactionResponse,
+  failureMessage: string,
+) => {
+  const result = await response.wait();
+  if (!result || result.state === RelayerTransactionState.STATE_FAILED) {
+    throw new Error(failureMessage);
+  }
+  return result;
 };
 
 const getClientSigner = (client: RelayClient) => {
@@ -313,6 +330,83 @@ export const executeRelayerTransactions = async ({
     }
     throw error;
   }
+};
+
+export const deriveDepositWalletAddress = async (client: RelayClient) => {
+  return client.deriveDepositWalletAddress();
+};
+
+export const ensureDepositWalletDeployed = async (client: RelayClient) => {
+  const signer = getClientSigner(client);
+  const owner = await signer.getAddress();
+  const walletAddress = await client.deriveDepositWalletAddress();
+  const alreadyDeployed = await client.getDeployed(walletAddress, 'WALLET');
+  if (alreadyDeployed) {
+    return walletAddress;
+  }
+  const depositWalletConfig = client.contractConfig.DepositWalletContracts;
+  if (!isDepositWalletContractConfigValid(depositWalletConfig)) {
+    throw new Error('Deposit wallet config unsupported on Polygon.');
+  }
+  console.info('[polymarket]', {
+    event: 'deposit_wallet_deploy_started',
+    component: 'relayer',
+    owner,
+    depositWalletAddress: walletAddress,
+  });
+  const request = buildDepositWalletCreateRequest(owner, depositWalletConfig);
+  const response = buildRelayerResponse(client, await submitRelayerRequest(request));
+  await waitForRelayerResponse(response, 'Deposit wallet deployment failed.');
+  const deployed = await client.getDeployed(walletAddress, 'WALLET');
+  if (!deployed) {
+    throw new Error('Deposit wallet deployment was not confirmed.');
+  }
+  return walletAddress;
+};
+
+export const executeDepositWalletBatch = async ({
+  client,
+  walletAddress,
+  calls,
+  deadline,
+}: {
+  client: RelayClient;
+  walletAddress: string;
+  calls: DepositWalletCall[];
+  deadline?: string;
+}) => {
+  const signer = getClientSigner(client);
+  const owner = await signer.getAddress();
+  const depositWalletConfig = client.contractConfig.DepositWalletContracts;
+  if (!isDepositWalletContractConfigValid(depositWalletConfig)) {
+    throw new Error('Deposit wallet config unsupported on Polygon.');
+  }
+  const noncePayload = await client.getNonce(owner, 'WALLET');
+  const resolvedDeadline =
+    deadline ?? Math.floor(Date.now() / 1000 + 10 * 60).toString();
+  const request = await buildDepositWalletBatchRequest(
+    signer,
+    {
+      from: owner,
+      chainId: CHAIN_ID,
+      walletAddress,
+      nonce: noncePayload.nonce,
+      deadline: resolvedDeadline,
+      calls,
+    },
+    depositWalletConfig,
+  );
+  console.info('[polymarket]', {
+    event: 'deposit_wallet_batch_forwarded',
+    component: 'relayer',
+    owner,
+    depositWalletAddress: walletAddress,
+    calls: calls.length,
+    nonce: noncePayload.nonce,
+  });
+  const response = buildRelayerResponse(client, await submitRelayerRequest(request));
+  await waitForRelayerResponse(response, 'Deposit wallet batch failed.');
+  return response;
 };
 
 export const deploySafeIfNeeded = async (

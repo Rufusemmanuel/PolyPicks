@@ -62,6 +62,16 @@ const roundTo = (value: number, decimals = 6) => {
 const formatCents = (price: number | null) =>
   price == null || !Number.isFinite(price) ? '-' : `${Math.round(price * 100)}c`;
 
+const DEPOSIT_WALLET_REQUIRED_MESSAGE =
+  'This account must trade through a Polymarket deposit wallet. Please deploy/fund your deposit wallet before trading.';
+
+const normalizeTradeErrorMessage = (message: string) => {
+  if (/maker address not allowed|deposit wallet flow/i.test(message)) {
+    return DEPOSIT_WALLET_REQUIRED_MESSAGE;
+  }
+  return message;
+};
+
 export function TradePanel({
   marketId,
   yesTokenId,
@@ -195,7 +205,11 @@ export function TradePanel({
   }, [relayerEnabled, walletSigner]);
 
   useEffect(() => {
-    if (!polymarketSession.proxyAddress) return;
+    const balanceAddress =
+      TRADE_CONFIG.signatureType === 3
+        ? polymarketSession.depositWalletAddress
+        : polymarketSession.proxyAddress;
+    if (!balanceAddress) return;
     let isMounted = true;
     setBalanceLoading(true);
     polymarketSession
@@ -210,7 +224,7 @@ export function TradePanel({
     return () => {
       isMounted = false;
     };
-  }, [polymarketSession.proxyAddress]);
+  }, [polymarketSession.depositWalletAddress, polymarketSession.proxyAddress]);
 
   const limitPriceValue = useMemo(() => {
     if (!limitPriceCents.trim()) return null;
@@ -391,10 +405,7 @@ export function TradePanel({
       return proxy;
     }
     if (TRADE_CONFIG.signatureType === 3) {
-      if (!proxyWalletAddress) {
-        throw new Error('Deposit wallet funder address unavailable for POLY_1271.');
-      }
-      return proxyWalletAddress;
+      return polymarketSession.ensureDepositWalletDeployed({ force: true });
     }
     if (proxyWalletAddress || relayerProxy) {
       return proxyWalletAddress ?? relayerProxy ?? '';
@@ -403,7 +414,17 @@ export function TradePanel({
   };
 
   const ensureApprovals = async () => {
-    if (TRADE_CONFIG.signatureType === 0 || TRADE_CONFIG.signatureType === 3) return;
+    if (TRADE_CONFIG.signatureType === 0) return;
+    if (TRADE_CONFIG.signatureType === 3) {
+      const contractConfig = getClobContractConfig(TRADE_CONFIG.chainId);
+      const exchange = negRisk ? contractConfig.negRiskExchangeV2 : contractConfig.exchangeV2;
+      const collateral = contractConfig.collateral;
+      const required = BigInt(Math.ceil((notional ?? 0) * 1_000_000));
+      if (required > 0n) {
+        await polymarketSession.ensureDepositWalletApprovals(collateral, exchange, required);
+      }
+      return;
+    }
     if (!polymarketSession.proxyAddress) return;
     const contractConfig = getClobContractConfig(TRADE_CONFIG.chainId);
     const exchange = negRisk ? contractConfig.negRiskExchange : contractConfig.exchange;
@@ -476,6 +497,8 @@ export function TradePanel({
         authAddress,
         signer: authAddress,
         funderAddress: funder,
+        depositWalletAddress: polymarketSession.depositWalletAddress,
+        depositWalletDeployed: polymarketSession.depositWalletDeployed,
         walletSessionProxy: polymarketSession.proxyAddress,
         relayerProxy,
       });
@@ -506,12 +529,12 @@ export function TradePanel({
       if (!response.ok) {
         const detailText =
           response.details != null ? ` ${JSON.stringify(response.details)}` : '';
-        setMessage(`${response.error ?? 'Order rejected.'}${detailText}`);
+        setMessage(normalizeTradeErrorMessage(`${response.error ?? 'Order rejected.'}${detailText}`));
         return;
       }
       setMessage('Order placed.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Order failed.');
+      setMessage(normalizeTradeErrorMessage(error instanceof Error ? error.message : 'Order failed.'));
     } finally {
       setIsSubmitting(false);
     }

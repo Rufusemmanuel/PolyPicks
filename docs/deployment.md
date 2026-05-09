@@ -12,7 +12,7 @@ PolyPicks trading is a user-wallet flow. The backend never signs user orders wit
 
 The usual app infrastructure variables, such as `DATABASE_URL`, are still required for login and persistence.
 
-Set `NEXT_PUBLIC_POLY_SIGNATURE_TYPE` to the wallet model being used: `0` for direct EOA, `1` for Polymarket proxy, `2` for existing Gnosis Safe proxy, or `3` for deposit-wallet `POLY_1271`. Deposit-wallet orders require `maker` and `signer` to both be the deposit wallet address.
+Set `NEXT_PUBLIC_POLY_SIGNATURE_TYPE=3` for normal browser user trading with deposit-wallet `POLY_1271`. Existing proxy/Safe accounts can use `1` or `2` as a legacy override. Browser user trades do not use direct EOA type `0`. Deposit-wallet orders require `maker` and `signer` to both be the deposit wallet address.
 
 ## Optional admin/reporting
 
@@ -29,8 +29,9 @@ Set `NEXT_PUBLIC_POLY_SIGNATURE_TYPE` to the wallet model being used: `0` for di
 ## User order path
 
 1. The browser connects an injected wallet and derives a viem signer.
-2. The user signs CLOB auth and order typed data from the connected wallet.
+2. New users derive/deploy a deterministic Polymarket deposit wallet through relayer `WALLET-CREATE`.
 3. `POLYMARKET_BUILDER_CODE` is added before signing and becomes the signed V2 `order.builder` field.
-4. The backend validates `order.builder`, uses the user-derived L2 session to post the signed order, and never creates a custodial order.
-5. If CLOB returns `401 invalid authorization`, the backend clears the stale user L2 session so the browser can re-derive credentials from the connected wallet and retry.
-6. Safe/proxy/deposit-wallet relayer transactions are signed in the browser, then submitted through `/api/polymarket/submit`; only the backend forwards the untouched user-signed payload to Polymarket relayer `/submit` with Builder API auth headers.
+4. The browser initializes CLOB signing with `signatureType=3` and the deposit wallet as `funderAddress`, producing a wrapped `POLY_1271` order where `maker` and `signer` are the deposit wallet.
+5. The backend validates `order.builder`, validates the deposit-wallet account model, uses the user-derived L2 session to post the signed order, and never creates a custodial order.
+6. If CLOB returns `401 invalid authorization`, the backend clears the stale user L2 session so the browser can re-derive credentials from the connected wallet and retry.
+7. Deposit-wallet approvals are sent as relayer `WALLET` batches through `/api/polymarket/submit`; only the backend forwards the untouched user-signed payload to Polymarket relayer `/submit` with Builder API auth headers.

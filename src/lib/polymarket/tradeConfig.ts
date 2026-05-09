@@ -4,9 +4,9 @@ const parseSignatureType = (): SignatureType => {
   const raw = process.env.NEXT_PUBLIC_POLY_SIGNATURE_TYPE;
   if (raw != null) {
     const parsed = Number(raw);
-    if (parsed === 0 || parsed === 1 || parsed === 2 || parsed === 3) return parsed;
+    if (parsed === 1 || parsed === 2 || parsed === 3) return parsed;
   }
-  return process.env.NEXT_PUBLIC_FORCE_EOA === 'true' ? 0 : 2;
+  return 3;
 };
 
 const parseNumber = (raw: string | undefined, fallback: number) => {
