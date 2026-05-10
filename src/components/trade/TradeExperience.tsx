@@ -88,6 +88,10 @@ export function TradeExperience({
     outcomeTokenIds[1] ??
     null;
   const tokenId = selectedOutcome === 'yes' ? yesTokenId : noTokenId;
+  const tradingWalletAddress =
+    polymarketSession.tradingWalletAddress ??
+    polymarketSession.proxyAddress ??
+    polymarketSession.depositWalletAddress;
 
   const yesOrderBook = useOrderBook(yesTokenId, TRADE_CONFIG.orderbookPollMs);
   const noOrderBook = useOrderBook(noTokenId, TRADE_CONFIG.orderbookPollMs);
@@ -126,14 +130,14 @@ export function TradeExperience({
   }, [market?.outcomePrices]);
 
   useEffect(() => {
-    if (!polymarketSession.proxyAddress) return;
+    if (!tradingWalletAddress) return;
     let isMounted = true;
     const loadPositions = async () => {
       setPositionsLoading(true);
       setPositionsError(null);
       try {
         const params = new URLSearchParams({
-          user: polymarketSession.proxyAddress!,
+          user: tradingWalletAddress,
           limit: '200',
         });
         const res = await fetch(`/api/positions?${params.toString()}`);
@@ -197,7 +201,13 @@ export function TradeExperience({
     return () => {
       isMounted = false;
     };
-  }, [market?.conditionId, marketId, noTokenId, polymarketSession.proxyAddress, yesTokenId]);
+  }, [
+    market?.conditionId,
+    marketId,
+    noTokenId,
+    tradingWalletAddress,
+    yesTokenId,
+  ]);
 
   const yesPosition = useMemo(
     () => positions.find((row) => row.tokenId === yesTokenId) ?? null,
@@ -224,7 +234,7 @@ export function TradeExperience({
   };
 
   const handleRedeem = async () => {
-    if (!polymarketSession.proxyAddress) {
+    if (!tradingWalletAddress) {
       setRedeemMessage('Connect your wallet to redeem.');
       return;
     }
@@ -235,10 +245,10 @@ export function TradeExperience({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          marketId,
-          proxyWalletAddress: polymarketSession.proxyAddress,
-        }),
-      });
+        marketId,
+        proxyWalletAddress: tradingWalletAddress,
+      }),
+    });
       const data = (await res.json()) as {
         ok: boolean;
         conditionId?: string;

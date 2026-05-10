@@ -143,12 +143,20 @@ export default function WalletPage() {
   const [withdrawTo, setWithdrawTo] = useState('');
   const [withdrawBusy, setWithdrawBusy] = useState(false);
   const isWalletReady = isConnected && isCorrectNetwork;
-  const isResolvingTradingWallet =
-    isWalletReady && depositWalletDeployed === null && !status;
+  const tradingWalletAddress =
+    proxyDeployed === true
+      ? proxyAddress
+      : proxyDeployed === false
+        ? depositWalletAddress
+        : null;
+  const isResolvingTradingWallet = isWalletReady && !tradingWalletAddress && !status;
   const shortProxyAddress = proxyAddress
     ? `${proxyAddress.slice(0, 6)}...${proxyAddress.slice(-4)}`
     : null;
-  const shortTradingWalletAddress = depositWalletAddress
+  const shortTradingWalletAddress = tradingWalletAddress
+    ? `${tradingWalletAddress.slice(0, 6)}...${tradingWalletAddress.slice(-4)}`
+    : null;
+  const shortDepositWalletAddress = depositWalletAddress
     ? `${depositWalletAddress.slice(0, 6)}...${depositWalletAddress.slice(-4)}`
     : null;
   const tradingWalletStatusLabel = !isConnected
@@ -157,7 +165,7 @@ export default function WalletPage() {
       ? 'Unavailable'
       : isResolvingTradingWallet
         ? 'Resolving'
-        : depositWalletAddress
+        : tradingWalletAddress
           ? 'Connected'
           : 'Unavailable';
   const buttonSecondary = isDark ? buttonSecondaryDark : buttonSecondaryLight;
@@ -242,17 +250,17 @@ export default function WalletPage() {
   }, [address, proxyAddress, relayerClient]);
 
   const positionsQuery = useQuery({
-    queryKey: ['wallet-positions', depositWalletAddress ?? proxyAddress],
-    enabled: Boolean(depositWalletAddress ?? proxyAddress),
-    queryFn: async () => fetchPositions((depositWalletAddress ?? proxyAddress)!),
+    queryKey: ['wallet-positions', tradingWalletAddress],
+    enabled: Boolean(tradingWalletAddress),
+    queryFn: async () => fetchPositions(tradingWalletAddress!),
   });
 
   const { collateral } = getContractConfig(polygon.id);
   const usdcBalanceQuery = useQuery({
-    queryKey: ['wallet-usdc-balance', depositWalletAddress ?? proxyAddress],
-    enabled: Boolean((depositWalletAddress ?? proxyAddress) && publicClient),
+    queryKey: ['wallet-usdc-balance', tradingWalletAddress],
+    enabled: Boolean(tradingWalletAddress && publicClient),
     queryFn: async () => {
-      const walletAddress = depositWalletAddress ?? proxyAddress;
+      const walletAddress = tradingWalletAddress;
       if (!publicClient || !walletAddress) return 0n;
       return publicClient.readContract({
         abi: erc20Abi,
@@ -361,7 +369,7 @@ export default function WalletPage() {
             <p className={`${cardLabel} text-blue-400`}>Wallet</p>
             <h1 className={pageTitle}>Portfolio</h1>
             <p className={`${bodyText} ${isDark ? 'text-white/70' : 'text-slate-600'}`}>
-              Track your deposit wallet balances and positions.
+              Track your trading wallet, bridge deposit, balances, and positions.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -405,7 +413,7 @@ export default function WalletPage() {
                 : '-'}
             </p>
             <p className={`mt-2 text-[11px] ${isDark ? 'text-white/40' : 'text-slate-500'}`}>
-              Deposit wallet USDC on Polygon
+              Trading/funder wallet USDC on Polygon
             </p>
           </div>
           <div className={`${cardBase} ${cardSurface} p-4`}>
@@ -432,24 +440,24 @@ export default function WalletPage() {
               <p className={`${cardLabel} text-white/50`}>Trading wallet</p>
               {!isConnected && (
                 <p className="mt-2 text-sm font-semibold">
-                  Connect a wallet to view the deposit wallet.
+                  Connect a wallet to view your trading wallet.
                 </p>
               )}
               {isConnected && !isCorrectNetwork && (
                 <p className="mt-2 text-sm font-semibold">
-                  Switch to Polygon to view the deposit wallet.
+                  Switch to Polygon to view your trading wallet.
                 </p>
               )}
-              {isWalletReady && !depositWalletAddress && (
-                <p className="mt-2 text-sm font-semibold">Resolving deposit wallet...</p>
+              {isWalletReady && isResolvingTradingWallet && (
+                <p className="mt-2 text-sm font-semibold">Resolving trading wallet...</p>
               )}
-              {isWalletReady && depositWalletAddress && (
+              {isWalletReady && tradingWalletAddress && (
                 <div className="mt-2 flex items-center gap-2 text-sm font-semibold">
                   <span className="font-mono">{shortTradingWalletAddress}</span>
                   <button
                     type="button"
                     onClick={() =>
-                      navigator.clipboard.writeText(depositWalletAddress).catch(() => null)
+                      navigator.clipboard.writeText(tradingWalletAddress).catch(() => null)
                     }
                     className={`${buttonSecondary} h-7 px-2 text-[10px] font-semibold`}
                     aria-label="Copy trading wallet address"
@@ -491,10 +499,32 @@ export default function WalletPage() {
               )}
             </div>
           </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div
+              className={`rounded-xl border px-3 py-2 ${
+                isDark ? 'border-white/10 bg-white/[0.03]' : 'border-slate-200 bg-white'
+              }`}
+            >
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                Trading/funder
+              </p>
+              <p className="mt-1 font-mono text-sm">{shortTradingWalletAddress ?? '-'}</p>
+            </div>
+            <div
+              className={`rounded-xl border px-3 py-2 ${
+                isDark ? 'border-white/10 bg-white/[0.03]' : 'border-slate-200 bg-white'
+              }`}
+            >
+              <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                Bridge deposit
+              </p>
+              <p className="mt-1 font-mono text-sm">{shortDepositWalletAddress ?? '-'}</p>
+            </div>
+          </div>
           {status && <p className="mt-3 text-xs text-red-400">{status}</p>}
           {isWalletReady && depositWalletAddress && (
             <p className="mt-3 text-[11px] text-slate-500">
-              Send USDC on Polygon to this deposit wallet address to fund trades.
+              The bridge deposit address is used for deposit-wallet funding.
             </p>
           )}
         </div>

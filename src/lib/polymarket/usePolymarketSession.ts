@@ -27,6 +27,7 @@ type SessionState = {
   depositWalletAddress: string | null;
   depositWalletDeployed: boolean | null;
   tradingWalletAddress: string | null;
+  tradingSignatureType: 2 | 3 | null;
   isLoading: boolean;
   lastRefreshAt: number | null;
   error: string | null;
@@ -78,6 +79,7 @@ export const usePolymarketSession = (
   const [depositWalletAddress, setDepositWalletAddress] = useState<string | null>(null);
   const [depositWalletDeployed, setDepositWalletDeployed] = useState<boolean | null>(null);
   const [tradingWalletAddress, setTradingWalletAddress] = useState<string | null>(null);
+  const [tradingSignatureType, setTradingSignatureType] = useState<2 | 3 | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +109,7 @@ export const usePolymarketSession = (
       setDepositWalletAddress(null);
       setDepositWalletDeployed(null);
       setTradingWalletAddress(null);
+      setTradingSignatureType(null);
       setLastRefreshAt(null);
       setError(null);
       setIsLoading(false);
@@ -177,7 +180,11 @@ export const usePolymarketSession = (
           setProxyDeployed(deployed);
           setDepositWalletAddress(depositWallet);
           setDepositWalletDeployed(depositDeployed);
-          setTradingWalletAddress(depositWallet);
+          const resolvedTradingWallet =
+            deployed === false ? depositWallet : resolvedSafe;
+          const resolvedTradingSignatureType: 2 | 3 = deployed === false ? 3 : 2;
+          setTradingWalletAddress(resolvedTradingWallet);
+          setTradingSignatureType(resolvedTradingSignatureType);
           setLastRefreshAt(Date.now());
           setError(deployCheckError ?? depositCheckError);
           initState.attempts = 0;
@@ -186,7 +193,8 @@ export const usePolymarketSession = (
               chainId: activeChainId,
               proxyAddress: resolvedSafe,
               depositWalletAddress: depositWallet,
-              tradingWalletAddress: depositWallet,
+              tradingWalletAddress: resolvedTradingWallet,
+              tradingSignatureType: resolvedTradingSignatureType,
               depositWalletDeployed: depositDeployed,
               eoaAddress: activeAddress,
               lastRefreshAt: new Date().toISOString(),
@@ -304,14 +312,14 @@ export const usePolymarketSession = (
         }
       }
       setDepositWalletAddress(walletAddress);
-      setTradingWalletAddress(walletAddress);
       if (depositWalletDeployed === null && options?.force) {
         try {
           const deployed = await relayClient.getDeployed(walletAddress, 'WALLET');
           if (deployed) {
             setDepositWalletAddress(walletAddress);
             setDepositWalletDeployed(true);
-            setTradingWalletAddress(walletAddress);
+            setTradingWalletAddress(proxyDeployed === false ? walletAddress : proxyAddress);
+            setTradingSignatureType(proxyDeployed === false ? 3 : 2);
             return walletAddress;
           }
           setDepositWalletDeployed(false);
@@ -326,13 +334,14 @@ export const usePolymarketSession = (
       const deployedWallet = await ensureDepositWalletDeployedWithRelayer(relayClient);
       setDepositWalletAddress(deployedWallet);
       setDepositWalletDeployed(true);
-      setTradingWalletAddress(deployedWallet);
+      setTradingWalletAddress(proxyDeployed === false ? deployedWallet : proxyAddress);
+      setTradingSignatureType(proxyDeployed === false ? 3 : 2);
       return deployedWallet;
     })().finally(() => {
       ensureDepositWalletRef.current = null;
     });
     return ensureDepositWalletRef.current;
-  }, [depositWalletAddress, depositWalletDeployed, eoaAddress, relayClient]);
+  }, [depositWalletAddress, depositWalletDeployed, eoaAddress, proxyAddress, proxyDeployed, relayClient]);
 
   const refreshProxyDeployment = useCallback(async () => {
     if (!relayClient) {
@@ -597,8 +606,12 @@ export const usePolymarketSession = (
       throw new Error('Chain unavailable.');
     }
     const { collateral } = getContractConfig(chainId);
-    if (tradingWalletAddress || depositWalletAddress) {
-      const walletAddress = tradingWalletAddress ?? (await ensureDepositWalletDeployed({ force: true }));
+    if (tradingWalletAddress || depositWalletAddress || proxyAddress) {
+      const walletAddress =
+        tradingWalletAddress ??
+        proxyAddress ??
+        (proxyDeployed === false ? depositWalletAddress : null) ??
+        (await ensureDepositWalletDeployed({ force: true }));
       return getTokenBalance(collateral, walletAddress);
     }
     const proxy = proxyAddress ?? (await ensureProxyDeployed());
@@ -644,6 +657,7 @@ export const usePolymarketSession = (
       depositWalletAddress,
       depositWalletDeployed,
       tradingWalletAddress,
+      tradingSignatureType,
       isLoading,
       lastRefreshAt,
       error,
@@ -666,6 +680,7 @@ export const usePolymarketSession = (
       depositWalletAddress,
       depositWalletDeployed,
       tradingWalletAddress,
+      tradingSignatureType,
       isLoading,
       lastRefreshAt,
       error,
