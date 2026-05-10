@@ -59,35 +59,6 @@ const redactOrderPayload = (payload: unknown) => {
   }
   return copy;
 };
-const isNegativeNumeric = (value: unknown) => {
-  if (typeof value === 'number') return value < 0;
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return false;
-    return trimmed.startsWith('-');
-  }
-  return false;
-};
-const isSellRequest = (
-  payload: Record<string, unknown>,
-  orderIn: Record<string, unknown>,
-) => {
-  const rootSide = payload.side;
-  const orderSide = orderIn.side;
-  const sideValues = [rootSide, orderSide];
-  for (const value of sideValues) {
-    if (value === 1 || value === '1') return true;
-    if (typeof value === 'string' && value.trim().toLowerCase() === 'sell') return true;
-  }
-  const amountFields = [
-    payload.amount,
-    payload.size,
-    orderIn.makerAmount,
-    orderIn.takerAmount,
-  ];
-  return amountFields.some((value) => isNegativeNumeric(value));
-};
-
 export const createOrderHandler = ({
   getSession,
   isSessionExpired,
@@ -175,13 +146,6 @@ export const createOrderHandler = ({
       );
     }
 
-    if (isSellRequest(payload, orderIn)) {
-      return NextResponse.json(
-        { code: 'SELL_DISABLED', message: 'Sell is disabled on this platform.' },
-        { status: 400, headers: { 'Cache-Control': 'no-store' } },
-      );
-    }
-
     const rawSide = orderIn.side;
     let sideValue: string | number | undefined = rawSide as string | number | undefined;
     if (typeof rawSide === 'number') {
@@ -192,13 +156,6 @@ export const createOrderHandler = ({
       else if (normalized === 'sell') sideValue = 'SELL';
       else sideValue = rawSide;
     }
-    if (sideValue === 'SELL' || sideValue === '1' || rawSide === 1 || rawSide === '1') {
-      return NextResponse.json(
-        { code: 'SELL_DISABLED', message: 'Sell is disabled on this platform.' },
-        { status: 400, headers: { 'Cache-Control': 'no-store' } },
-      );
-    }
-
     const normalizedOrder: Record<string, unknown> = {
       ...orderIn,
       tokenId: String(tokenIdValue),

@@ -192,13 +192,6 @@ const createAndPostOrderOnce = async ({
     throw new Error('Limit order size is required.');
   }
 
-  if (side === Side.SELL) {
-    return {
-      ok: false,
-      error: 'Sell is disabled on this platform.',
-    };
-  }
-
   const signedOrder = isMarketOrder
     ? await clobClient.createMarketOrder({
         tokenID: tokenId,

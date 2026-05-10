@@ -41,6 +41,11 @@ type SessionState = {
   refreshProxyDeployment: () => Promise<void>;
   ensureApprovals: (token: string, spender: string, amount: bigint) => Promise<void>;
   ensureDepositWalletApprovals: (token: string, spender: string, amount: bigint) => Promise<void>;
+  ensureDepositWalletConditionalApproval: (
+    token: string,
+    operator: string,
+    tokenId: string,
+  ) => Promise<void>;
   ensureOperatorApproval: (token: string, operator: string) => Promise<void>;
   getUsdcBalance: () => Promise<bigint>;
   withdrawErc20: (token: string, to: string, amount: bigint) => Promise<unknown>;
@@ -431,6 +436,7 @@ export const usePolymarketSession = (
   const syncBalanceAllowance = useCallback(async (params?: {
     assetType?: 'COLLATERAL' | 'CONDITIONAL';
     tokenId?: string;
+    signatureType?: 2 | 3;
   }) => {
     const res = await fetch('/api/polymarket/balance-allowance/update', {
       method: 'POST',
@@ -438,7 +444,7 @@ export const usePolymarketSession = (
       body: JSON.stringify({
         assetType: params?.assetType ?? 'COLLATERAL',
         tokenId: params?.tokenId,
-        signatureType: 3,
+        signatureType: params?.signatureType ?? 3,
       }),
     });
     if (!res.ok) {
@@ -460,7 +466,7 @@ export const usePolymarketSession = (
         args: [walletAddress as `0x${string}`, spender as `0x${string}`],
       });
       if (typeof allowance === 'bigint' && allowance >= amount) {
-        await syncBalanceAllowance({ assetType: 'COLLATERAL' });
+        await syncBalanceAllowance({ assetType: 'COLLATERAL', signatureType: 3 });
         return;
       }
       const data = encodeFunctionData({
@@ -475,7 +481,7 @@ export const usePolymarketSession = (
         walletAddress,
         calls: [{ target: token, data, value: '0' }],
       });
-      await syncBalanceAllowance({ assetType: 'COLLATERAL' });
+      await syncBalanceAllowance({ assetType: 'COLLATERAL', signatureType: 3 });
     },
     [
       address,
@@ -483,6 +489,42 @@ export const usePolymarketSession = (
       publicClient,
       relayClient,
       syncBalanceAllowance,
+      walletClient,
+    ],
+  );
+
+  const ensureDepositWalletConditionalApproval = useCallback(
+    async (token: string, operator: string, tokenId: string) => {
+      if (!relayClient || !walletClient || !address) {
+        throw new Error('Relayer client not ready.');
+      }
+      const walletAddress = await ensureDepositWalletDeployed({ force: true });
+      const approved = await publicClient.readContract({
+        address: token as `0x${string}`,
+        abi: viemErc1155Abi,
+        functionName: 'isApprovedForAll',
+        args: [walletAddress as `0x${string}`, operator as `0x${string}`],
+      });
+      if (approved !== true) {
+        const data = encodeFunctionData({
+          abi: viemErc1155Abi,
+          functionName: 'setApprovalForAll',
+          args: [operator as `0x${string}`, true],
+        });
+        await executeDepositWalletBatch({
+          client: relayClient,
+          walletClient,
+          ownerAddress: address,
+          walletAddress,
+          calls: [{ target: token, data, value: '0' }],
+        });
+      }
+    },
+    [
+      address,
+      ensureDepositWalletDeployed,
+      publicClient,
+      relayClient,
       walletClient,
     ],
   );
@@ -623,6 +665,7 @@ export const usePolymarketSession = (
     ensureProxyDeployed,
     getTokenBalance,
     proxyAddress,
+    proxyDeployed,
     tradingWalletAddress,
   ]);
 
@@ -667,6 +710,7 @@ export const usePolymarketSession = (
       refreshProxyDeployment,
       ensureApprovals,
       ensureDepositWalletApprovals,
+      ensureDepositWalletConditionalApproval,
       ensureOperatorApproval,
       getUsdcBalance,
       withdrawErc20,
@@ -690,6 +734,7 @@ export const usePolymarketSession = (
       refreshProxyDeployment,
       ensureApprovals,
       ensureDepositWalletApprovals,
+      ensureDepositWalletConditionalApproval,
       ensureOperatorApproval,
       getUsdcBalance,
       withdrawErc20,

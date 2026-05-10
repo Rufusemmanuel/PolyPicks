@@ -1,7 +1,7 @@
 type MarketPriceArgs = {
   bestBid: number | null;
   bestAsk: number | null;
-  side: 'BUY';
+  side: 'BUY' | 'SELL';
   slippageBps: number;
 };
 
@@ -25,5 +25,11 @@ export const resolveMarketPrice = ({
     const normalized = Math.min(PRICE_SCALE - 1, Math.max(1, slipped));
     return { price: fromPriceInt(normalized) };
   }
-  return { price: null, error: 'Only BUY market pricing is supported.' };
+  if (bestBid == null || !Number.isFinite(bestBid)) {
+    return { price: null, error: 'There are no buyers available for this outcome right now.' };
+  }
+  const bidInt = toPriceInt(bestBid);
+  const slipped = Math.floor((bidInt * (10_000 - slippageBps)) / 10_000);
+  const normalized = Math.min(PRICE_SCALE - 1, Math.max(1, slipped));
+  return { price: fromPriceInt(normalized) };
 };

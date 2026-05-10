@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createWalletClient, custom } from 'viem';
+import { createWalletClient, custom, formatUnits, parseUnits } from 'viem';
 import { polygon } from 'viem/chains';
 import {
   OrderType,
@@ -75,6 +75,37 @@ const normalizeTradeErrorMessage = (message: string) => {
 const sameAddress = (left: string, right: string) =>
   left.toLowerCase() === right.toLowerCase();
 
+const fetchShareBalanceForToken = async (
+  owner: string,
+  tokenId: string,
+): Promise<bigint> => {
+  const params = new URLSearchParams({ user: owner, limit: '200' });
+  const res = await fetch(`/api/positions?${params.toString()}`);
+  const data = (await res.json().catch(() => null)) as
+    | { ok?: boolean; positions?: Array<Record<string, unknown>>; error?: string }
+    | Array<Record<string, unknown>>
+    | null;
+  if (!res.ok || !data || ('ok' in data && !data.ok)) {
+    const errorMessage =
+      data && !Array.isArray(data) && typeof data.error === 'string'
+        ? data.error
+        : 'Positions request failed';
+    throw new Error(errorMessage);
+  }
+  const rows = Array.isArray(data) ? data : data.positions ?? [];
+  const match = rows.find((row) => {
+    const rowTokenId = (row.tokenId ?? row.token_id ?? row.asset) as string | null;
+    return typeof rowTokenId === 'string' && rowTokenId === tokenId;
+  });
+  if (!match) return 0n;
+  const rawSize = (match.size ?? match.balance ?? match.shares ?? '0') as
+    | string
+    | number;
+  return typeof rawSize === 'number'
+    ? parseUnits(rawSize.toString(), 6)
+    : parseUnits(String(rawSize), 6);
+};
+
 export function TradePanel({
   marketId,
   yesTokenId,
@@ -92,7 +123,7 @@ export function TradePanel({
   const { isDark } = useTheme();
   const sessionQuery = useSession();
   const tradingStatus = useTradingStatus();
-  const side = 'BUY';
+  const [tradeSide, setTradeSide] = useState<'BUY' | 'SELL'>('BUY');
   const [orderType, setOrderType] = useState<'MARKET' | 'LIMIT'>('MARKET');
   const [amount, setAmount] = useState('0');
   const [limitPriceCents, setLimitPriceCents] = useState('');
@@ -101,6 +132,8 @@ export function TradePanel({
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [relayerProxy, setRelayerProxy] = useState<string | null>(null);
+  const [shareBalance, setShareBalance] = useState<bigint | null>(null);
+  const [shareBalanceLoading, setShareBalanceLoading] = useState(false);
   const {
     address,
     chainId,
@@ -237,6 +270,29 @@ export function TradePanel({
     polymarketSession.tradingWalletAddress,
   ]);
 
+  useEffect(() => {
+    if (!tradingWalletAddress || !tokenId) {
+      setShareBalance(null);
+      setShareBalanceLoading(false);
+      return;
+    }
+    let isMounted = true;
+    setShareBalanceLoading(true);
+    fetchShareBalanceForToken(tradingWalletAddress, tokenId)
+      .then((value) => {
+        if (isMounted) setShareBalance(value);
+      })
+      .catch(() => {
+        if (isMounted) setShareBalance(null);
+      })
+      .finally(() => {
+        if (isMounted) setShareBalanceLoading(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [tokenId, tradingWalletAddress]);
+
   const limitPriceValue = useMemo(() => {
     if (!limitPriceCents.trim()) return null;
     const parsed = Number(limitPriceCents);
@@ -251,10 +307,10 @@ export function TradePanel({
       resolveMarketPrice({
         bestBid,
         bestAsk,
-        side,
+        side: tradeSide,
         slippageBps: TRADE_CONFIG.slippageBps,
       }),
-    [bestBid, bestAsk],
+    [bestAsk, bestBid, tradeSide],
   );
 
   const effectiveOrderPrice = useMemo(() => {
@@ -278,8 +334,11 @@ export function TradePanel({
 
   const marketDisplayPrice = useMemo(() => {
     if (orderType !== 'MARKET') return null;
+    if (tradeSide === 'SELL') {
+      return marketPriceResult.price ?? bestBid;
+    }
     return indicativePrice ?? bestAsk;
-  }, [bestAsk, indicativePrice, orderType]);
+  }, [bestAsk, bestBid, indicativePrice, marketPriceResult.price, orderType, tradeSide]);
 
   const calculatedSize = useMemo(() => {
     if (!effectiveOrderPrice) return null;
@@ -288,22 +347,40 @@ export function TradePanel({
       return roundTo(parsedShares);
     }
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) return null;
-    return roundTo(parsedAmount / effectiveOrderPrice);
-  }, [effectiveOrderPrice, orderType, parsedAmount, parsedShares]);
-
-  const estimatedShares = useMemo(() => {
-    if (orderType !== 'MARKET') return null;
-    if (!marketDisplayPrice || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-      return null;
-    }
-    return roundTo(parsedAmount / marketDisplayPrice, 3);
-  }, [marketDisplayPrice, orderType, parsedAmount]);
+    return tradeSide === 'BUY'
+      ? roundTo(parsedAmount / effectiveOrderPrice)
+      : roundTo(parsedAmount);
+  }, [effectiveOrderPrice, orderType, parsedAmount, parsedShares, tradeSide]);
 
   const notional = useMemo(() => {
     if (!effectiveOrderPrice || !calculatedSize) return null;
     const value = calculatedSize * effectiveOrderPrice;
     return roundTo(value, 2);
   }, [calculatedSize, effectiveOrderPrice]);
+
+  const estimatedSharesToBuy = useMemo(() => {
+    if (tradeSide !== 'BUY' || orderType !== 'MARKET') return null;
+    if (!marketDisplayPrice || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      return null;
+    }
+    return roundTo(parsedAmount / marketDisplayPrice, 3);
+  }, [marketDisplayPrice, orderType, parsedAmount, tradeSide]);
+
+  const estimatedReceive = useMemo(() => {
+    if (tradeSide !== 'SELL') return null;
+    if (!notional || notional <= 0) return null;
+    return notional;
+  }, [notional, tradeSide]);
+
+  const maxSellableShares = useMemo(() => {
+    if (shareBalance == null) return null;
+    return Number(formatUnits(shareBalance, 6));
+  }, [shareBalance]);
+
+  const calculatedSizeBase = useMemo(() => {
+    if (calculatedSize == null) return null;
+    return parseUnits(calculatedSize.toFixed(6), 6);
+  }, [calculatedSize]);
 
   const sizeBelowMin =
     minOrderSize != null &&
@@ -330,6 +407,15 @@ export function TradePanel({
     if (polymarketSession.tradingSignatureType == null) {
       blockers.push('Trading signature type is still resolving.');
     }
+    if (tradeSide === 'SELL') {
+      if (shareBalanceLoading) blockers.push('Loading your shares for sale.');
+      if (shareBalance != null && shareBalance <= 0n) {
+        blockers.push('You do not have shares of this outcome to sell.');
+      }
+      if (calculatedSizeBase != null && shareBalance != null && calculatedSizeBase > shareBalance) {
+        blockers.push('You do not have shares of this outcome to sell.');
+      }
+    }
     if (isSubmitting) blockers.push('Order is already submitting.');
     if (!tokenId) blockers.push('Select an outcome to trade.');
     if (effectiveOrderPrice == null) blockers.push('No tradable price is available.');
@@ -340,14 +426,19 @@ export function TradePanel({
     return blockers;
   }, [
     calculatedSize,
+    calculatedSizeBase,
     effectiveOrderPrice,
     isSubmitting,
     limitPriceInvalid,
     marketPriceError,
     minOrderSize,
     sessionQuery.isLoading,
+    shareBalance,
+    shareBalanceLoading,
+    tradeSide,
     polymarketSession.isLoading,
     polymarketSession.tradingSignatureType,
+    tradingWalletAddress,
     sizeBelowMin,
     tokenId,
     tradingStatus.data,
@@ -367,7 +458,14 @@ export function TradePanel({
     !tradingDisabled &&
     !isSubmitting &&
     formReady;
-  const buttonDisabled = isSubmitting || !formReady;
+  const buttonDisabled =
+    isSubmitting ||
+    !formReady ||
+    (tradeSide === 'SELL' &&
+      (shareBalanceLoading ||
+        shareBalance == null ||
+        shareBalance <= 0n ||
+        (calculatedSizeBase != null && shareBalance != null && calculatedSizeBase > shareBalance)));
 
   useEffect(() => {
     if (!submitBlockers.length) return;
@@ -420,6 +518,29 @@ export function TradePanel({
 
   const ensureApprovals = async () => {
     const contractConfig = getClobContractConfig(TRADE_CONFIG.chainId);
+    if (tradeSide === 'SELL') {
+      const exchange = negRisk
+        ? tradingSignatureType === 3
+          ? contractConfig.negRiskExchangeV2
+          : contractConfig.negRiskExchange
+        : tradingSignatureType === 3
+          ? contractConfig.exchangeV2
+          : contractConfig.exchange;
+      if (!tokenId) {
+        throw new Error('Select an outcome to trade.');
+      }
+      if (tradingSignatureType === 3) {
+        await polymarketSession.ensureDepositWalletConditionalApproval(
+          contractConfig.conditionalTokens,
+          exchange,
+          tokenId,
+        );
+      } else {
+        await polymarketSession.ensureOperatorApproval(contractConfig.conditionalTokens, exchange);
+      }
+      await syncConditionalBalanceAllowance();
+      return;
+    }
     const required = BigInt(Math.ceil((notional ?? 0) * 1_000_000));
     if (required <= 0n) {
       return;
@@ -435,6 +556,35 @@ export function TradePanel({
     }
     const exchange = negRisk ? contractConfig.negRiskExchange : contractConfig.exchange;
     await polymarketSession.ensureApprovals(contractConfig.collateral, exchange, required);
+  };
+
+  const formatSubmissionError = (message: string, details?: unknown) => {
+    const haystack = `${message} ${details ? JSON.stringify(details) : ''}`;
+    if (tradeSide === 'SELL' && /(allowance|balance|insufficient)/i.test(haystack)) {
+      const available =
+        shareBalance != null ? formatUnits(shareBalance, 6) : '0';
+      return `Unable to sell this outcome. You have ${available} shares available for this outcome. Check conditional-token approval and try again.`;
+    }
+    return normalizeTradeErrorMessage(message);
+  };
+
+  const syncConditionalBalanceAllowance = async () => {
+    if (!tokenId) {
+      throw new Error('Select an outcome to trade.');
+    }
+    const res = await fetch('/api/polymarket/balance-allowance/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        assetType: 'CONDITIONAL',
+        tokenId,
+        signatureType: tradingSignatureType,
+      }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(data?.error ?? 'Balance allowance update failed.');
+    }
   };
 
   const handleSubmit = async () => {
@@ -487,6 +637,19 @@ export function TradePanel({
       setMessage('Trading signature type is still resolving.');
       return;
     }
+    if (tradeSide === 'SELL' && (shareBalanceLoading || shareBalance == null)) {
+      setMessage('Unable to load your shares for sale.');
+      return;
+    }
+    if (
+      tradeSide === 'SELL' &&
+      calculatedSizeBase != null &&
+      shareBalance != null &&
+      calculatedSizeBase > shareBalance
+    ) {
+      setMessage('You do not have shares of this outcome to sell.');
+      return;
+    }
     setIsSubmitting(true);
     setMessage(null);
     try {
@@ -524,6 +687,9 @@ export function TradePanel({
         funderAddress: funder,
         signatureType: tradingSignatureType,
       });
+      if (tradeSide === 'SELL') {
+        setMessage('Approving shares for sale...');
+      }
       await ensureApprovals();
       const marketAmount =
         orderType === 'MARKET'
@@ -532,7 +698,7 @@ export function TradePanel({
       const response = await createAndPostOrder({
         signer,
         tokenId,
-        side: Side.BUY,
+        side: tradeSide === 'SELL' ? Side.SELL : Side.BUY,
         price: effectiveOrderPrice!,
         size: orderType === 'LIMIT' ? calculatedSize : null,
         amount: marketAmount,
@@ -549,14 +715,16 @@ export function TradePanel({
         },
       });
       if (!response.ok) {
-        const detailText =
-          response.details != null ? ` ${JSON.stringify(response.details)}` : '';
-        setMessage(normalizeTradeErrorMessage(`${response.error ?? 'Order rejected.'}${detailText}`));
+        setMessage(
+          formatSubmissionError(`${response.error ?? 'Order rejected.'}`, response.details),
+        );
         return;
       }
       setMessage('Order placed.');
     } catch (error) {
-      setMessage(normalizeTradeErrorMessage(error instanceof Error ? error.message : 'Order failed.'));
+      setMessage(
+        formatSubmissionError(error instanceof Error ? error.message : 'Order failed.'),
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -570,15 +738,25 @@ export function TradePanel({
 
   const applyQuickAmount = (value: number | 'max') => {
     if (value === 'max') {
+      if (tradeSide === 'SELL') {
+        if (!maxSellableShares) return;
+        setAmount(maxSellableShares.toFixed(3));
+        return;
+      }
       if (!maxAmount) return;
       setAmount(maxAmount.toFixed(2));
       return;
     }
     const next = Number(amount) + value;
-    if (Number.isFinite(next)) setAmount(next.toFixed(2));
+    if (Number.isFinite(next)) setAmount(next.toFixed(tradeSide === 'SELL' ? 3 : 2));
   };
 
   const applyLimitPercent = (percent: number) => {
+    if (tradeSide === 'SELL') {
+      if (!maxSellableShares) return;
+      setShares((maxSellableShares * percent).toFixed(3));
+      return;
+    }
     if (!effectiveOrderPrice) return;
     if (maxAmount) {
       const notionalValue = maxAmount * percent;
@@ -604,27 +782,47 @@ export function TradePanel({
     <div
       className={`${cardBase} ${cardSurface} p-4`}
     >
-        <div className="flex items-center justify-end">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="inline-flex rounded-full border p-1 text-xs font-semibold uppercase tracking-wide">
+            {(['BUY', 'SELL'] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setTradeSide(value)}
+                className={`rounded-full px-3 py-1 ${
+                  tradeSide === value
+                    ? isDark
+                      ? 'bg-white/10 text-slate-100'
+                      : 'bg-slate-900 text-white'
+                    : isDark
+                      ? 'text-slate-400'
+                      : 'text-slate-600'
+                }`}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
           <div className="inline-flex rounded-full border p-1 text-xs font-semibold uppercase tracking-wide">
             {(['MARKET', 'LIMIT'] as const).map((value) => (
               <button
                 key={value}
-              type="button"
-              onClick={() => setOrderType(value)}
-              className={`rounded-full px-3 py-1 ${
-                orderType === value
-                  ? isDark
-                    ? 'bg-white/10 text-slate-100'
-                    : 'bg-slate-900 text-white'
-                  : isDark
-                    ? 'text-slate-400'
-                    : 'text-slate-600'
-              }`}
-            >
-              {value === 'MARKET' ? 'Market' : 'Limit'}
-            </button>
-          ))}
-        </div>
+                type="button"
+                onClick={() => setOrderType(value)}
+                className={`rounded-full px-3 py-1 ${
+                  orderType === value
+                    ? isDark
+                      ? 'bg-white/10 text-slate-100'
+                      : 'bg-slate-900 text-white'
+                    : isDark
+                      ? 'text-slate-400'
+                      : 'text-slate-600'
+                }`}
+              >
+                {value === 'MARKET' ? 'Market' : 'Limit'}
+              </button>
+            ))}
+          </div>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
@@ -658,21 +856,28 @@ export function TradePanel({
           Suggested: {suggestedPriceCents}c
         </div>
       )}
+      {tradeSide === 'SELL' && (
+        <div className={`mt-2 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+          Shares available: {shareBalance != null ? formatUnits(shareBalance, 6) : '...'}
+        </div>
+      )}
 
       {orderType === 'MARKET' ? (
         <div className="mt-4 space-y-3">
           <div className="flex items-center justify-between">
             <div>
               <p className={`${cardLabel} ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Amount
+                {tradeSide === 'SELL' ? 'Shares' : 'Amount'}
               </p>
-              <p className="text-lg font-semibold">Market order</p>
+              <p className="text-lg font-semibold">
+                Market {tradeSide === 'SELL' ? 'sell' : 'buy'}
+              </p>
             </div>
             <input
               type="number"
               inputMode="decimal"
               min="0"
-              step="0.01"
+              step={tradeSide === 'SELL' ? '0.001' : '0.01'}
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
               className={`${inputBase} w-32 text-right text-lg font-semibold`}
@@ -680,38 +885,57 @@ export function TradePanel({
           </div>
           <div className="flex items-center justify-between text-xs">
             <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-              Indicative price
+              {tradeSide === 'SELL' ? 'Indicative bid' : 'Indicative price'}
             </span>
             <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>
               {formatCents(marketDisplayPrice)}
             </span>
           </div>
-          {side === 'BUY' && (
+          {tradeSide === 'BUY' ? (
             <div className="flex items-center justify-between text-xs">
               <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
                 Estimated shares
               </span>
               <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>
-                {estimatedShares != null ? estimatedShares.toFixed(3) : '-'}
+                {estimatedSharesToBuy != null ? estimatedSharesToBuy.toFixed(3) : '-'}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between text-xs">
+              <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
+                Estimated receive
+              </span>
+              <span className={isDark ? 'text-slate-300' : 'text-slate-700'}>
+                {estimatedReceive != null ? `$${estimatedReceive.toFixed(2)}` : '-'}
               </span>
             </div>
           )}
           <div className="flex flex-wrap gap-2">
-            {[1, 20, 100].map((value) => (
+            {(tradeSide === 'SELL' ? [1, 5, 10] : [1, 20, 100]).map((value) => (
               <button
                 key={value}
                 type="button"
                 onClick={() => applyQuickAmount(value)}
                 className={`${buttonSecondary} h-8 px-3 text-xs`}
               >
-                {`+$${value}`}
+                {tradeSide === 'SELL' ? `+${value}` : `+$${value}`}
               </button>
             ))}
             <button
               type="button"
               onClick={() => applyQuickAmount('max')}
-              disabled={!maxAmount || balanceLoading}
-              className={`${buttonSecondary} h-8 px-3 text-xs ${(!maxAmount || balanceLoading) ? 'opacity-50' : ''}`}
+              disabled={
+                tradeSide === 'SELL'
+                  ? !maxSellableShares || shareBalanceLoading
+                  : !maxAmount || balanceLoading
+              }
+              className={`${buttonSecondary} h-8 px-3 text-xs ${(
+                tradeSide === 'SELL'
+                  ? !maxSellableShares || shareBalanceLoading
+                  : !maxAmount || balanceLoading
+              )
+                ? 'opacity-50'
+                : ''}`}
             >
               Max
             </button>
@@ -731,7 +955,9 @@ export function TradePanel({
                 type="button"
                 onClick={() => {
                   const fallback =
-                    limitPriceValue ?? bestAsk ?? bestBid ?? 0.5;
+                    limitPriceValue ??
+                    (tradeSide === 'SELL' ? bestBid ?? bestAsk : bestAsk ?? bestBid) ??
+                    0.5;
                   const currentCents = Math.round(fallback * 100);
                   const nextCents = Math.max(1, currentCents - tickStepCents);
                   setLimitPriceCents(String(nextCents));
@@ -757,7 +983,9 @@ export function TradePanel({
                 type="button"
                 onClick={() => {
                   const fallback =
-                    limitPriceValue ?? bestAsk ?? bestBid ?? 0.5;
+                    limitPriceValue ??
+                    (tradeSide === 'SELL' ? bestBid ?? bestAsk : bestAsk ?? bestBid) ??
+                    0.5;
                   const currentCents = Math.round(fallback * 100);
                   const nextCents = Math.min(99, currentCents + tickStepCents);
                   setLimitPriceCents(String(nextCents));
@@ -773,9 +1001,11 @@ export function TradePanel({
           <div className="flex items-center justify-between">
             <div>
               <p className={`${cardLabel} ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Shares
+                {tradeSide === 'SELL' ? 'Shares to sell' : 'Shares'}
               </p>
-              <p className="text-sm">Enter shares</p>
+              <p className="text-sm">
+                {tradeSide === 'SELL' ? 'Enter shares to sell' : 'Enter shares'}
+              </p>
             </div>
             <input
               type="number"
@@ -814,7 +1044,7 @@ export function TradePanel({
       <div className={`mt-4 rounded-xl border p-3 text-sm ${isDark ? 'border-slate-800 bg-slate-900/40' : 'border-slate-200 bg-slate-50'}`}>
         <div className="flex items-center justify-between">
           <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-            You&apos;ll pay
+            {tradeSide === 'SELL' ? "You'll receive" : "You'll pay"}
           </span>
           <span className="font-semibold">
             {notional != null ? `$${notional.toFixed(2)}` : '-'}
@@ -822,16 +1052,20 @@ export function TradePanel({
         </div>
         <div className="mt-2 flex items-center justify-between text-xs">
           <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-            You&apos;ll receive
+            {tradeSide === 'SELL' ? 'Shares to sell' : 'You&apos;ll receive'}
           </span>
           <span className={isDark ? 'text-slate-200' : 'text-slate-700'}>
-            {orderType === 'MARKET'
-              ? estimatedShares != null
-                ? `${estimatedShares.toFixed(3)} shares`
-                : '-'
-              : calculatedSize != null
+            {tradeSide === 'SELL'
+              ? calculatedSize != null
                 ? `${calculatedSize.toFixed(3)} shares`
-                : '-'}
+                : '-'
+              : orderType === 'MARKET'
+                ? estimatedSharesToBuy != null
+                  ? `${estimatedSharesToBuy.toFixed(3)} shares`
+                  : '-'
+                : calculatedSize != null
+                  ? `${calculatedSize.toFixed(3)} shares`
+                  : '-'}
           </span>
         </div>
         {sizeBelowMin && (
