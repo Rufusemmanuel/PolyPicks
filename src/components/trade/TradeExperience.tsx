@@ -88,10 +88,7 @@ export function TradeExperience({
     outcomeTokenIds[1] ??
     null;
   const tokenId = selectedOutcome === 'yes' ? yesTokenId : noTokenId;
-  const tradingWalletAddress =
-    polymarketSession.tradingWalletAddress ??
-    polymarketSession.proxyAddress ??
-    polymarketSession.depositWalletAddress;
+  const tradingWalletAddress = polymarketSession.tradingWalletAddress;
 
   const yesOrderBook = useOrderBook(yesTokenId, TRADE_CONFIG.orderbookPollMs);
   const noOrderBook = useOrderBook(noTokenId, TRADE_CONFIG.orderbookPollMs);

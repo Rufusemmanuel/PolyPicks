@@ -488,7 +488,7 @@ export default function WalletPage() {
                   Refresh
                 </button>
               )}
-              {isWalletReady && proxyAddress && (
+              {isWalletReady && proxyDeployed === true && proxyAddress && (
                 <button
                   type="button"
                   onClick={() => setWithdrawOpen(true)}

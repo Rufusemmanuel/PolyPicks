@@ -31,6 +31,10 @@ type CreateAndPostArgs = {
   tickSize?: number | string | null;
   negRisk?: boolean | null;
   expiration?: number | null;
+  walletMode?: 'legacy-proxy' | 'deposit-wallet' | null;
+  proxyWalletAddress?: string | null;
+  depositWalletAddress?: string | null;
+  tradingWalletAddress?: string | null;
   clientMeta?: Record<string, unknown>;
 };
 
@@ -54,6 +58,11 @@ const normalizeOrderErrorMessage = (message: string, details?: unknown) => {
     return DEPOSIT_WALLET_REQUIRED_MESSAGE;
   }
   return message;
+};
+
+export const isDepositWalletRequiredError = (message?: string | null, details?: unknown) => {
+  const haystack = `${message ?? ''} ${details ? JSON.stringify(details) : ''}`;
+  return /maker address not allowed|deposit wallet flow|deposit wallet required/i.test(haystack);
 };
 
 const safeJson = async <T,>(res: Response): Promise<T | null> => {
@@ -151,6 +160,10 @@ const createAndPostOrderOnce = async ({
   tickSize,
   negRisk,
   expiration,
+  walletMode,
+  proxyWalletAddress,
+  depositWalletAddress,
+  tradingWalletAddress,
   clientMeta,
   forceSessionRefresh = false,
 }: CreateAndPostArgs & { forceSessionRefresh?: boolean }): Promise<OrderResponse> => {
@@ -271,6 +284,20 @@ const createAndPostOrderOnce = async ({
     }
   }
   console.info('[polymarket]', {
+    event: 'order_pre_post_wallet_context',
+    component: 'trade_service',
+    connectedEoa: authAddress,
+    walletMode: walletMode ?? (signatureType === 3 ? 'deposit-wallet' : 'legacy-proxy'),
+    proxyWallet: proxyWalletAddress ?? null,
+    depositWallet: depositWalletAddress ?? (signatureType === 3 ? funderAddress : null),
+    tradingWalletAddress: tradingWalletAddress ?? funderAddress,
+    signatureType,
+    maker: normalized.maker,
+    signer: normalized.signer,
+    funderAddress,
+    signatureLength: normalized.signature.length,
+  });
+  console.info('[polymarket]', {
     event: 'signed_order_ready',
     component: 'trade_service',
     builderCode,
@@ -308,7 +335,10 @@ const createAndPostOrderOnce = async ({
       'Order rejected.';
     return {
       ok: false,
-      code: (data as { code?: string })?.code,
+      code: (data as { code?: string })?.code ??
+        (isDepositWalletRequiredError(errorText, details)
+          ? 'DEPOSIT_WALLET_REQUIRED'
+          : undefined),
       error: normalizeOrderErrorMessage(errorText, details),
       ...(details ? { details } : {}),
       data,

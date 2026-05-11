@@ -14,7 +14,10 @@ import { useSession } from '@/lib/useSession';
 import { usePolymarketSession } from '@/lib/polymarket/usePolymarketSession';
 import type { OrderBookState } from '@/lib/polymarket/marketDataService';
 import { TRADE_CONFIG } from '@/lib/polymarket/tradeConfig';
-import { createAndPostOrder } from '@/lib/polymarket/tradeService';
+import {
+  createAndPostOrder,
+  isDepositWalletRequiredError,
+} from '@/lib/polymarket/tradeService';
 import { resolveMarketPrice } from '@/lib/polymarket/orderPricing';
 import { ensureRelayerProxy } from '@/lib/polymarket/relayerService';
 import { useInjectedWallet } from '@/hooks/useInjectedWallet';
@@ -171,13 +174,23 @@ export function TradePanel({
     sessionQuery.isLoading ||
     polymarketSession.isLoading ||
     !polymarketSession.initialized;
-  const tradingWalletAddress =
-    polymarketSession.tradingWalletAddress ??
-    polymarketSession.proxyAddress ??
-    polymarketSession.depositWalletAddress;
-  const tradingSignatureType =
-    polymarketSession.tradingSignatureType ??
-    (polymarketSession.proxyDeployed === true ? 2 : 3);
+  const tradingWalletAddress = polymarketSession.tradingWalletAddress;
+  const tradingSignatureType = polymarketSession.tradingSignatureType;
+  const walletMode = polymarketSession.walletMode;
+  const isDepositWalletMode = walletMode === 'deposit-wallet';
+  const isPreparingDepositWallet =
+    polymarketSession.depositWalletRequired &&
+    (!polymarketSession.depositWalletAddress ||
+      polymarketSession.depositWalletDeployed !== true ||
+      walletMode !== 'deposit-wallet' ||
+      tradingSignatureType !== 3 ||
+      !tradingWalletAddress);
+  const shortTradingWalletAddress = tradingWalletAddress
+    ? `${tradingWalletAddress.slice(0, 6)}...${tradingWalletAddress.slice(-4)}`
+    : null;
+  const shortDepositWalletAddress = polymarketSession.depositWalletAddress
+    ? `${polymarketSession.depositWalletAddress.slice(0, 6)}...${polymarketSession.depositWalletAddress.slice(-4)}`
+    : null;
   const relayerEnabled = process.env.NEXT_PUBLIC_POLY_ENABLE_RELAYER === '1';
 
   useEffect(() => {
@@ -407,6 +420,9 @@ export function TradePanel({
     }
     if (sessionQuery.isLoading) blockers.push('User session is loading.');
     if (polymarketSession.isLoading) blockers.push('Polymarket wallet session is loading.');
+    if (isPreparingDepositWallet) {
+      blockers.push('Deposit wallet required. Preparing trading wallet...');
+    }
     if (!polymarketSession.initialized) blockers.push('Initializing trading session...');
     if (!tradingWalletAddress) blockers.push('Trading wallet is still resolving.');
     if (polymarketSession.tradingSignatureType == null) {
@@ -443,6 +459,7 @@ export function TradePanel({
     tradeSide,
     polymarketSession.isLoading,
     polymarketSession.initialized,
+    isPreparingDepositWallet,
     polymarketSession.tradingSignatureType,
     tradingWalletAddress,
     sizeBelowMin,
@@ -463,6 +480,8 @@ export function TradePanel({
   const canSubmit =
     !tradingDisabled &&
     polymarketSession.initialized &&
+    !isPreparingDepositWallet &&
+    Boolean(tradingWalletAddress && tradingSignatureType) &&
     !isSubmitting &&
     formReady;
   const buttonDisabled =
@@ -524,20 +543,26 @@ export function TradePanel({
     return wallet;
   };
 
-  const ensureApprovals = async () => {
+  const ensureApprovals = async ({
+    signatureType,
+    funderAddress,
+  }: {
+    signatureType: 2 | 3;
+    funderAddress: string;
+  }) => {
     const contractConfig = getClobContractConfig(TRADE_CONFIG.chainId);
     if (tradeSide === 'SELL') {
       const exchange = negRisk
-        ? tradingSignatureType === 3
+        ? signatureType === 3
           ? contractConfig.negRiskExchangeV2
           : contractConfig.negRiskExchange
-        : tradingSignatureType === 3
+        : signatureType === 3
           ? contractConfig.exchangeV2
           : contractConfig.exchange;
       if (!tokenId) {
         throw new Error('Select an outcome to trade.');
       }
-      if (tradingSignatureType === 3) {
+      if (signatureType === 3) {
         await polymarketSession.ensureDepositWalletConditionalApproval(
           contractConfig.conditionalTokens,
           exchange,
@@ -546,14 +571,14 @@ export function TradePanel({
       } else {
         await polymarketSession.ensureOperatorApproval(contractConfig.conditionalTokens, exchange);
       }
-      await syncConditionalBalanceAllowance();
+      await syncConditionalBalanceAllowance({ signatureType, funderAddress });
       return;
     }
     const required = BigInt(Math.ceil((notional ?? 0) * 1_000_000));
     if (required <= 0n) {
       return;
     }
-    if (tradingSignatureType === 3) {
+    if (signatureType === 3) {
       const exchange = negRisk ? contractConfig.negRiskExchangeV2 : contractConfig.exchangeV2;
       await polymarketSession.ensureDepositWalletApprovals(
         contractConfig.collateral,
@@ -576,18 +601,24 @@ export function TradePanel({
     return normalizeTradeErrorMessage(message);
   };
 
-  const syncConditionalBalanceAllowance = async () => {
+  const syncConditionalBalanceAllowance = async ({
+    signatureType,
+    funderAddress,
+  }: {
+    signatureType: 2 | 3;
+    funderAddress: string;
+  }) => {
     if (!tokenId) {
       throw new Error('Select an outcome to trade.');
     }
-    if (!polymarketSession.initialized || !tradingWalletAddress || !tradingSignatureType) {
+    if (!polymarketSession.initialized) {
       throw new Error('Initializing trading session...');
     }
     await polymarketSession.syncBalanceAllowance({
       assetType: 'CONDITIONAL',
       tokenId,
-      signatureType: tradingSignatureType,
-      tradingWalletAddress,
+      signatureType,
+      tradingWalletAddress: funderAddress,
     });
   };
 
@@ -669,55 +700,100 @@ export function TradePanel({
           `Resolved trading wallet ${funder} does not match selected trading wallet ${tradingWalletAddress}.`,
         );
       }
-      console.info('[trade-ui]', {
-        event: 'trade_submit_auth_context',
-        signatureType: tradingSignatureType,
-        authAddress,
-        signer: authAddress,
-        funderAddress: funder,
-        tradingWalletAddress,
+      const submitWithContext = async ({
+        signatureType,
+        funderAddress,
+        mode,
+        depositWalletAddress,
+      }: {
+        signatureType: 2 | 3;
+        funderAddress: string;
+        mode: 'legacy-proxy' | 'deposit-wallet';
+        depositWalletAddress: string | null;
+      }) => {
+        console.info('[trade-ui]', {
+          event: 'trade_submit_auth_context',
+          connectedEoa: authAddress,
+          walletMode: mode,
+          signatureType,
+          authAddress,
+          signer: authAddress,
+          funderAddress,
+          tradingWalletAddress: funderAddress,
+          depositWalletAddress,
+          depositWalletDeployed: polymarketSession.depositWalletDeployed,
+          walletSessionProxy: polymarketSession.proxyAddress,
+          relayerProxy,
+        });
+        console.info('[trade-ui]', {
+          event: 'trade_submit_canonical_wallet',
+          connectedEoa: authAddress,
+          walletMode: mode,
+          proxyWallet: polymarketSession.proxyAddress,
+          depositWallet: depositWalletAddress,
+          tradingWalletAddress: funderAddress,
+          maker: funderAddress,
+          signer: signatureType === 3 ? funderAddress : authAddress,
+          funderAddress,
+          signatureType,
+        });
+        if (tradeSide === 'SELL') {
+          setMessage('Approving shares for sale...');
+        }
+        await ensureApprovals({ signatureType, funderAddress });
+        const marketAmount = orderType === 'MARKET' ? parsedAmount : null;
+        return createAndPostOrder({
+          signer,
+          tokenId,
+          side: tradeSide === 'SELL' ? Side.SELL : Side.BUY,
+          price: effectiveOrderPrice!,
+          size: orderType === 'LIMIT' ? calculatedSize : null,
+          amount: marketAmount,
+          tradeMode: orderType === 'MARKET' ? 'market' : 'limit',
+          execution: orderType === 'MARKET' ? OrderType.FOK : OrderType.GTC,
+          signatureType,
+          funderAddress,
+          tickSize,
+          negRisk,
+          walletMode: mode,
+          proxyWalletAddress: polymarketSession.proxyAddress,
+          depositWalletAddress,
+          tradingWalletAddress: funderAddress,
+          clientMeta: {
+            marketId,
+            orderPrice: effectiveOrderPrice,
+            size: calculatedSize,
+          },
+        });
+      };
+      let activeSignatureType = tradingSignatureType;
+      let activeFunder = funder;
+      let activeMode: 'legacy-proxy' | 'deposit-wallet' =
+        walletMode ?? (activeSignatureType === 3 ? 'deposit-wallet' : 'legacy-proxy');
+      let response = await submitWithContext({
+        signatureType: activeSignatureType,
+        funderAddress: activeFunder,
+        mode: activeMode,
         depositWalletAddress: polymarketSession.depositWalletAddress,
-        depositWalletDeployed: polymarketSession.depositWalletDeployed,
-        walletSessionProxy: polymarketSession.proxyAddress,
-        relayerProxy,
       });
-      console.info('[trade-ui]', {
-        event: 'trade_submit_canonical_wallet',
-        connectedEoa: authAddress,
-        resolvedDepositWallet: polymarketSession.depositWalletAddress ?? null,
-        tradingWalletAddress: funder,
-        maker: funder,
-        signer: funder,
-        funderAddress: funder,
-        signatureType: tradingSignatureType,
-      });
-      if (tradeSide === 'SELL') {
-        setMessage('Approving shares for sale...');
+      if (
+        !response.ok &&
+        activeSignatureType !== 3 &&
+        (response.code === 'DEPOSIT_WALLET_REQUIRED' ||
+          isDepositWalletRequiredError(response.error, response.details))
+      ) {
+        setMessage('Deposit wallet required. Preparing trading wallet...');
+        const depositWallet = await polymarketSession.requireDepositWalletFlow();
+        activeSignatureType = 3;
+        activeFunder = depositWallet;
+        activeMode = 'deposit-wallet';
+        response = await submitWithContext({
+          signatureType: activeSignatureType,
+          funderAddress: activeFunder,
+          mode: activeMode,
+          depositWalletAddress: depositWallet,
+        });
       }
-      await ensureApprovals();
-      const marketAmount =
-        orderType === 'MARKET'
-          ? parsedAmount
-          : null;
-      const response = await createAndPostOrder({
-        signer,
-        tokenId,
-        side: tradeSide === 'SELL' ? Side.SELL : Side.BUY,
-        price: effectiveOrderPrice!,
-        size: orderType === 'LIMIT' ? calculatedSize : null,
-        amount: marketAmount,
-        tradeMode: orderType === 'MARKET' ? 'market' : 'limit',
-        execution: orderType === 'MARKET' ? OrderType.FOK : OrderType.GTC,
-        signatureType: tradingSignatureType,
-        funderAddress: funder,
-        tickSize,
-        negRisk,
-        clientMeta: {
-          marketId,
-          orderPrice: effectiveOrderPrice,
-          size: calculatedSize,
-        },
-      });
       if (!response.ok) {
         setMessage(
           formatSubmissionError(`${response.error ?? 'Order rejected.'}`, response.details),
@@ -1080,6 +1156,19 @@ export function TradePanel({
         {marketPriceError && (
           <p className="mt-2 text-xs text-red-400">{marketPriceError}</p>
         )}
+        <div className="mt-2 flex items-center justify-between text-xs">
+          <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
+            {isDepositWalletMode ? 'Deposit trading wallet' : 'Funding wallet'}
+          </span>
+          <span className={`font-mono ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+            {shortTradingWalletAddress ?? shortDepositWalletAddress ?? '-'}
+          </span>
+        </div>
+        {isPreparingDepositWallet && (
+          <p className="mt-2 text-xs text-blue-400">
+            Deposit wallet required. Preparing trading wallet...
+          </p>
+        )}
       </div>
 
       {message && (
@@ -1100,6 +1189,8 @@ export function TradePanel({
       >
         {isSubmitting
           ? 'Submitting...'
+          : isPreparingDepositWallet
+            ? 'Preparing deposit wallet...'
           : !polymarketSession.initialized
             ? 'Initializing trading session...'
             : 'Trade'}

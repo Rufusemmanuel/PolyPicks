@@ -43,9 +43,12 @@ const sameAddress = (left: unknown, right: unknown) =>
   left.toLowerCase() === right.toLowerCase();
 const DEPOSIT_WALLET_REQUIRED_MESSAGE =
   'This account must trade through a Polymarket deposit wallet. Please deploy/fund your deposit wallet before trading.';
-const normalizeExchangeError = (message: string, body?: unknown) => {
+const isDepositWalletRequiredMessage = (message: string, body?: unknown) => {
   const haystack = `${message} ${body ? JSON.stringify(body) : ''}`;
-  if (/maker address not allowed|deposit wallet flow/i.test(haystack)) {
+  return /maker address not allowed|deposit wallet flow/i.test(haystack);
+};
+const normalizeExchangeError = (message: string, body?: unknown) => {
+  if (isDepositWalletRequiredMessage(message, body)) {
     return DEPOSIT_WALLET_REQUIRED_MESSAGE;
   }
   return message;
@@ -443,6 +446,9 @@ export const createOrderHandler = ({
         return NextResponse.json(
           {
             ok: false,
+            ...(isDepositWalletRequiredMessage('CLOB error', text)
+              ? { code: 'DEPOSIT_WALLET_REQUIRED' }
+              : {}),
             error: normalizeExchangeError('CLOB error', text),
             details: {
               status: res.status,
@@ -523,7 +529,10 @@ export const createOrderHandler = ({
         return NextResponse.json(
           {
             ok: false,
-            error: 'CLOB error',
+            ...(isDepositWalletRequiredMessage('CLOB error', data)
+              ? { code: 'DEPOSIT_WALLET_REQUIRED' }
+              : {}),
+            error: normalizeExchangeError('CLOB error', data),
             details: {
               status: res.status,
               body: data ?? null,
@@ -552,6 +561,12 @@ export const createOrderHandler = ({
         return NextResponse.json(
           {
             ok: false,
+            ...(isDepositWalletRequiredMessage(
+              (data as { errorMsg?: string }).errorMsg ?? 'Order rejected',
+              data,
+            )
+              ? { code: 'DEPOSIT_WALLET_REQUIRED' }
+              : {}),
             error: normalizeExchangeError(
               (data as { errorMsg?: string }).errorMsg ?? 'Order rejected',
               data,
