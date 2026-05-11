@@ -583,25 +583,12 @@ export function TradePanel({
     if (!polymarketSession.initialized || !tradingWalletAddress || !tradingSignatureType) {
       throw new Error('Initializing trading session...');
     }
-    const res = await fetch('/api/polymarket/balance-allowance/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        assetType: 'CONDITIONAL',
-        asset_type: 'CONDITIONAL',
-        tokenId,
-        token_id: tokenId,
-        signatureType: tradingSignatureType,
-        signature_type: tradingSignatureType,
-        tradingWalletAddress,
-        funderAddress: tradingWalletAddress,
-        connectedEoa: address,
-      }),
+    await polymarketSession.syncBalanceAllowance({
+      assetType: 'CONDITIONAL',
+      tokenId,
+      signatureType: tradingSignatureType,
+      tradingWalletAddress,
     });
-    if (!res.ok) {
-      const data = (await res.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(data?.error ?? 'Balance allowance update failed.');
-    }
   };
 
   const handleSubmit = async () => {

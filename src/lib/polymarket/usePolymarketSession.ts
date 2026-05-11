@@ -51,6 +51,12 @@ type SessionState = {
     tokenId: string,
   ) => Promise<void>;
   ensureOperatorApproval: (token: string, operator: string) => Promise<void>;
+  syncBalanceAllowance: (params?: {
+    assetType?: 'COLLATERAL' | 'CONDITIONAL';
+    tokenId?: string;
+    signatureType?: 2 | 3;
+    tradingWalletAddress?: string;
+  }) => Promise<void>;
   getUsdcBalance: () => Promise<bigint>;
   withdrawErc20: (token: string, to: string, amount: bigint) => Promise<unknown>;
   getTokenBalance: (token: string, address?: string) => Promise<bigint>;
@@ -62,6 +68,7 @@ type SessionState = {
 };
 
 const ZERO_BYTES32 = `0x${'0'.repeat(64)}` as const;
+const AUTH_INVALID_SESSION_CODE = 'AUTH_INVALID_SESSION';
 const conditionalTokensAbi = [
   {
     type: 'function',
@@ -465,10 +472,7 @@ export const usePolymarketSession = (
     if (!sessionReady) {
       throw new Error('Initializing trading session...');
     }
-    const res = await fetch('/api/polymarket/balance-allowance/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const body = {
         assetType: params?.assetType ?? 'COLLATERAL',
         asset_type: params?.assetType ?? 'COLLATERAL',
         tokenId: params?.tokenId,
@@ -478,11 +482,35 @@ export const usePolymarketSession = (
         tradingWalletAddress: resolvedTradingWallet,
         funderAddress: resolvedTradingWallet,
         connectedEoa: address,
-      }),
-    });
+      };
+    const postUpdate = () =>
+      fetch('/api/polymarket/balance-allowance/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    let res = await postUpdate();
+    let errorData = !res.ok
+      ? await res.json().catch(() => null) as { code?: string; error?: string } | null
+      : null;
+    if (!res.ok && walletClient && address && chainId === 137) {
+      if (errorData?.code === AUTH_INVALID_SESSION_CODE || res.status === 401) {
+        await ensureTradingSession(createViemSigner(walletClient, address), chainId, {
+          force: true,
+          tradingWalletAddress: resolvedTradingWallet,
+          signatureType: resolvedSignatureType,
+        });
+        setInitialized(true);
+        setHasApiCreds(true);
+        setError(null);
+        res = await postUpdate();
+        errorData = !res.ok
+          ? await res.json().catch(() => null) as { code?: string; error?: string } | null
+          : null;
+      }
+    }
     if (!res.ok) {
-      const data = await res.json().catch(() => null) as { error?: string } | null;
-      throw new Error(data?.error ?? 'Balance allowance update failed.');
+      throw new Error(errorData?.error ?? 'Balance allowance update failed.');
     }
   }, [
     address,
@@ -817,6 +845,7 @@ export const usePolymarketSession = (
       ensureDepositWalletApprovals,
       ensureDepositWalletConditionalApproval,
       ensureOperatorApproval,
+      syncBalanceAllowance,
       getUsdcBalance,
       withdrawErc20,
       getTokenBalance,
@@ -843,6 +872,7 @@ export const usePolymarketSession = (
       ensureDepositWalletApprovals,
       ensureDepositWalletConditionalApproval,
       ensureOperatorApproval,
+      syncBalanceAllowance,
       getUsdcBalance,
       withdrawErc20,
       getTokenBalance,
