@@ -1056,7 +1056,7 @@ export function TradePanel({
         </div>
         <div className="mt-2 flex items-center justify-between text-xs">
           <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-            {tradeSide === 'SELL' ? 'Shares to sell' : 'You&apos;ll receive'}
+            {tradeSide === 'SELL' ? 'Shares to sell' : "You'll receive"}
           </span>
           <span className={isDark ? 'text-slate-200' : 'text-slate-700'}>
             {tradeSide === 'SELL'
