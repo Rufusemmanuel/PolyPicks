@@ -19,6 +19,18 @@ type L1Headers = {
 const redact = (value: string | undefined) =>
   value ? `${value.slice(0, 6)}...${value.slice(-4)}` : null;
 
+const sameAddress = (left: string, right: string) =>
+  left.toLowerCase() === right.toLowerCase();
+
+const normalizeAddress = (value: unknown) =>
+  typeof value === 'string' && ADDRESS_RE.test(value) ? value : null;
+
+const normalizeSignatureType = (value: unknown) => {
+  if (value == null) return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 3 ? parsed : null;
+};
+
 const normalizeL1Headers = (payload: Record<string, unknown>): L1Headers | null => {
   const address =
     typeof payload.POLY_ADDRESS === 'string'
@@ -83,6 +95,12 @@ export async function POST(request: NextRequest) {
     );
   }
   const forceRefresh = payload.forceRefresh === true;
+  const tradingWalletAddress = normalizeAddress(
+    payload.tradingWalletAddress ?? payload.funderAddress,
+  );
+  const signatureType = normalizeSignatureType(
+    payload.signatureType ?? payload.signature_type,
+  );
 
   let session: Awaited<ReturnType<typeof getSession>>;
   try {
@@ -93,24 +111,46 @@ export async function POST(request: NextRequest) {
       { status: 500, headers: { 'Cache-Control': 'no-store' } },
     );
   }
-  if (session.l2 && session.walletAddress && session.walletAddress !== l1Headers.POLY_ADDRESS) {
+  if (session.l2 && session.walletAddress && !sameAddress(session.walletAddress, l1Headers.POLY_ADDRESS)) {
     clearSession(session);
   }
   if (forceRefresh && session.l2) {
     session.l2 = undefined;
     session.walletAddress = undefined;
+    session.tradingWalletAddress = undefined;
+    session.signatureType = undefined;
     session.createdAt = undefined;
   }
   if (
     !forceRefresh &&
     session.l2 &&
-    session.walletAddress === l1Headers.POLY_ADDRESS &&
+    sameAddress(session.walletAddress ?? '', l1Headers.POLY_ADDRESS) &&
     !isSessionExpired(session)
   ) {
+    let changed = false;
+    if (
+      tradingWalletAddress &&
+      (!session.tradingWalletAddress ||
+        !sameAddress(session.tradingWalletAddress, tradingWalletAddress))
+    ) {
+      session.tradingWalletAddress = tradingWalletAddress;
+      changed = true;
+    }
+    if (signatureType && session.signatureType !== signatureType) {
+      session.signatureType = signatureType;
+      changed = true;
+    }
+    if (changed) {
+      await session.save();
+    }
     console.info('[polymarket]', {
       event: 'l2_creds_reused',
       component: 'auth_init',
-      authAddress: l1Headers.POLY_ADDRESS,
+      connectedEoa: l1Headers.POLY_ADDRESS,
+      sessionInitialized: true,
+      tradingWalletAddress: session.tradingWalletAddress ?? null,
+      signatureType: session.signatureType ?? null,
+      hasApiCreds: Boolean(session.l2.apiKey && session.l2.secret && session.l2.passphrase),
       apiKey: redact(session.l2.apiKey),
     });
     return NextResponse.json(
@@ -158,7 +198,11 @@ export async function POST(request: NextRequest) {
     console.info('[polymarket]', {
       event: 'l2_creds_init_failed',
       component: 'auth_init',
-      authAddress: l1Headers.POLY_ADDRESS,
+      connectedEoa: l1Headers.POLY_ADDRESS,
+      sessionInitialized: false,
+      tradingWalletAddress,
+      signatureType,
+      hasApiCreds: false,
       source,
       forceRefresh,
     });
@@ -174,13 +218,19 @@ export async function POST(request: NextRequest) {
     passphrase: creds.passphrase,
   };
   session.walletAddress = l1Headers.POLY_ADDRESS;
+  if (tradingWalletAddress) session.tradingWalletAddress = tradingWalletAddress;
+  if (signatureType) session.signatureType = signatureType;
   session.createdAt = Date.now();
   await session.save();
 
   console.info('[polymarket]', {
     event: 'l2_creds_initialized',
     component: 'auth_init',
-    authAddress: l1Headers.POLY_ADDRESS,
+    connectedEoa: l1Headers.POLY_ADDRESS,
+    sessionInitialized: true,
+    tradingWalletAddress: session.tradingWalletAddress ?? null,
+    signatureType: session.signatureType ?? null,
+    hasApiCreds: Boolean(creds.apiKey && creds.secret && creds.passphrase),
     source,
     forceRefresh,
     apiKey: redact(creds.apiKey),

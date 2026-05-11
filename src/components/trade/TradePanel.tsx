@@ -66,6 +66,9 @@ const DEPOSIT_WALLET_REQUIRED_MESSAGE =
   'This account must trade through a Polymarket deposit wallet. Please deploy/fund your deposit wallet before trading.';
 
 const normalizeTradeErrorMessage = (message: string) => {
+  if (/session not initialized|trading session is not initialized/i.test(message)) {
+    return 'Trading session is initializing. Reconnect your wallet and approve the trading session prompt if this keeps happening.';
+  }
   if (/maker address not allowed|deposit wallet flow/i.test(message)) {
     return DEPOSIT_WALLET_REQUIRED_MESSAGE;
   }
@@ -166,7 +169,8 @@ export function TradePanel({
     tradingStatus.isLoading ||
     !tradingStatus.data?.enabled ||
     sessionQuery.isLoading ||
-    polymarketSession.isLoading;
+    polymarketSession.isLoading ||
+    !polymarketSession.initialized;
   const tradingWalletAddress =
     polymarketSession.tradingWalletAddress ??
     polymarketSession.proxyAddress ??
@@ -403,6 +407,7 @@ export function TradePanel({
     }
     if (sessionQuery.isLoading) blockers.push('User session is loading.');
     if (polymarketSession.isLoading) blockers.push('Polymarket wallet session is loading.');
+    if (!polymarketSession.initialized) blockers.push('Initializing trading session...');
     if (!tradingWalletAddress) blockers.push('Trading wallet is still resolving.');
     if (polymarketSession.tradingSignatureType == null) {
       blockers.push('Trading signature type is still resolving.');
@@ -437,6 +442,7 @@ export function TradePanel({
     shareBalanceLoading,
     tradeSide,
     polymarketSession.isLoading,
+    polymarketSession.initialized,
     polymarketSession.tradingSignatureType,
     tradingWalletAddress,
     sizeBelowMin,
@@ -456,9 +462,11 @@ export function TradePanel({
     !marketPriceError;
   const canSubmit =
     !tradingDisabled &&
+    polymarketSession.initialized &&
     !isSubmitting &&
     formReady;
   const buttonDisabled =
+    !canSubmit ||
     isSubmitting ||
     !formReady ||
     (tradeSide === 'SELL' &&
@@ -572,13 +580,22 @@ export function TradePanel({
     if (!tokenId) {
       throw new Error('Select an outcome to trade.');
     }
+    if (!polymarketSession.initialized || !tradingWalletAddress || !tradingSignatureType) {
+      throw new Error('Initializing trading session...');
+    }
     const res = await fetch('/api/polymarket/balance-allowance/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         assetType: 'CONDITIONAL',
+        asset_type: 'CONDITIONAL',
         tokenId,
+        token_id: tokenId,
         signatureType: tradingSignatureType,
+        signature_type: tradingSignatureType,
+        tradingWalletAddress,
+        funderAddress: tradingWalletAddress,
+        connectedEoa: address,
       }),
     });
     if (!res.ok) {
@@ -1094,7 +1111,11 @@ export function TradePanel({
           !canSubmit ? 'opacity-60' : ''
         }`}
       >
-        {isSubmitting ? 'Submitting...' : 'Trade'}
+        {isSubmitting
+          ? 'Submitting...'
+          : !polymarketSession.initialized
+            ? 'Initializing trading session...'
+            : 'Trade'}
       </button>
 
     </div>

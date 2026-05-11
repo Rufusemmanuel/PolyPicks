@@ -17,6 +17,8 @@ import {
   loadStoredProxyAddress,
   storeProxyAddress,
 } from '@/lib/polymarket/relayer';
+import { ensureTradingSession } from '@/lib/polymarket/tradeService';
+import { createViemSigner } from '@/lib/wallet/viemSigner';
 import { getPolygonPublicClient } from '@/lib/wallet/publicClient';
 import type { WalletClient } from 'viem';
 
@@ -28,6 +30,8 @@ type SessionState = {
   depositWalletDeployed: boolean | null;
   tradingWalletAddress: string | null;
   tradingSignatureType: 2 | 3 | null;
+  initialized: boolean;
+  hasApiCreds: boolean;
   isLoading: boolean;
   lastRefreshAt: number | null;
   error: string | null;
@@ -85,6 +89,8 @@ export const usePolymarketSession = (
   const [depositWalletDeployed, setDepositWalletDeployed] = useState<boolean | null>(null);
   const [tradingWalletAddress, setTradingWalletAddress] = useState<string | null>(null);
   const [tradingSignatureType, setTradingSignatureType] = useState<2 | 3 | null>(null);
+  const [initialized, setInitialized] = useState(false);
+  const [hasApiCreds, setHasApiCreds] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +121,8 @@ export const usePolymarketSession = (
       setDepositWalletDeployed(null);
       setTradingWalletAddress(null);
       setTradingSignatureType(null);
+      setInitialized(false);
+      setHasApiCreds(false);
       setLastRefreshAt(null);
       setError(null);
       setIsLoading(false);
@@ -188,8 +196,18 @@ export const usePolymarketSession = (
           const resolvedTradingWallet =
             deployed === false ? depositWallet : resolvedSafe;
           const resolvedTradingSignatureType: 2 | 3 = deployed === false ? 3 : 2;
+          if (!resolvedTradingWallet) {
+            throw new Error('Trading wallet address unavailable.');
+          }
+          const signer = createViemSigner(activeWalletClient, activeAddress);
+          await ensureTradingSession(signer, activeChainId, {
+            tradingWalletAddress: resolvedTradingWallet,
+            signatureType: resolvedTradingSignatureType,
+          });
           setTradingWalletAddress(resolvedTradingWallet);
           setTradingSignatureType(resolvedTradingSignatureType);
+          setInitialized(true);
+          setHasApiCreds(true);
           setLastRefreshAt(Date.now());
           setError(deployCheckError ?? depositCheckError);
           initState.attempts = 0;
@@ -200,14 +218,18 @@ export const usePolymarketSession = (
               depositWalletAddress: depositWallet,
               tradingWalletAddress: resolvedTradingWallet,
               tradingSignatureType: resolvedTradingSignatureType,
+              initialized: true,
+              hasApiCreds: true,
               depositWalletDeployed: depositDeployed,
-              eoaAddress: activeAddress,
+              connectedEoa: activeAddress,
               lastRefreshAt: new Date().toISOString(),
             });
           }
         } catch (err) {
           if (initState.token !== currentToken) return;
           const message = err instanceof Error ? err.message : 'Unable to init relayer.';
+          setInitialized(false);
+          setHasApiCreds(false);
           setError(message);
           initState.attempts += 1;
           const nextDelay = Math.min(8000, 500 * 2 ** (initState.attempts - 1));
@@ -323,8 +345,18 @@ export const usePolymarketSession = (
           if (deployed) {
             setDepositWalletAddress(walletAddress);
             setDepositWalletDeployed(true);
-            setTradingWalletAddress(proxyDeployed === false ? walletAddress : proxyAddress);
-            setTradingSignatureType(proxyDeployed === false ? 3 : 2);
+            const nextTradingWallet = proxyDeployed === false ? walletAddress : proxyAddress;
+            const nextSignatureType: 2 | 3 = proxyDeployed === false ? 3 : 2;
+            setTradingWalletAddress(nextTradingWallet);
+            setTradingSignatureType(nextSignatureType);
+            if (nextTradingWallet && walletClient && address) {
+              await ensureTradingSession(createViemSigner(walletClient, address), 137, {
+                tradingWalletAddress: nextTradingWallet,
+                signatureType: nextSignatureType,
+              });
+              setInitialized(true);
+              setHasApiCreds(true);
+            }
             return walletAddress;
           }
           setDepositWalletDeployed(false);
@@ -339,14 +371,24 @@ export const usePolymarketSession = (
       const deployedWallet = await ensureDepositWalletDeployedWithRelayer(relayClient);
       setDepositWalletAddress(deployedWallet);
       setDepositWalletDeployed(true);
-      setTradingWalletAddress(proxyDeployed === false ? deployedWallet : proxyAddress);
-      setTradingSignatureType(proxyDeployed === false ? 3 : 2);
+      const nextTradingWallet = proxyDeployed === false ? deployedWallet : proxyAddress;
+      const nextSignatureType: 2 | 3 = proxyDeployed === false ? 3 : 2;
+      setTradingWalletAddress(nextTradingWallet);
+      setTradingSignatureType(nextSignatureType);
+      if (nextTradingWallet && walletClient && address) {
+        await ensureTradingSession(createViemSigner(walletClient, address), 137, {
+          tradingWalletAddress: nextTradingWallet,
+          signatureType: nextSignatureType,
+        });
+        setInitialized(true);
+        setHasApiCreds(true);
+      }
       return deployedWallet;
     })().finally(() => {
       ensureDepositWalletRef.current = null;
     });
     return ensureDepositWalletRef.current;
-  }, [depositWalletAddress, depositWalletDeployed, eoaAddress, proxyAddress, proxyDeployed, relayClient]);
+  }, [address, depositWalletAddress, depositWalletDeployed, eoaAddress, proxyAddress, proxyDeployed, relayClient, walletClient]);
 
   const refreshProxyDeployment = useCallback(async () => {
     if (!relayClient) {
@@ -398,6 +440,60 @@ export const usePolymarketSession = (
     [depositWalletAddress, publicClient, proxyAddress, tradingWalletAddress],
   );
 
+  const syncBalanceAllowance = useCallback(async (params?: {
+    assetType?: 'COLLATERAL' | 'CONDITIONAL';
+    tokenId?: string;
+    signatureType?: 2 | 3;
+    tradingWalletAddress?: string;
+  }) => {
+    const resolvedSignatureType = params?.signatureType ?? tradingSignatureType;
+    const resolvedTradingWallet = params?.tradingWalletAddress ?? tradingWalletAddress;
+    if (!resolvedSignatureType || !resolvedTradingWallet) {
+      throw new Error('Initializing trading session...');
+    }
+    let sessionReady = initialized && hasApiCreds;
+    if (!sessionReady && walletClient && address && chainId === 137) {
+      await ensureTradingSession(createViemSigner(walletClient, address), chainId, {
+        tradingWalletAddress: resolvedTradingWallet,
+        signatureType: resolvedSignatureType,
+      });
+      setInitialized(true);
+      setHasApiCreds(true);
+      setError(null);
+      sessionReady = true;
+    }
+    if (!sessionReady) {
+      throw new Error('Initializing trading session...');
+    }
+    const res = await fetch('/api/polymarket/balance-allowance/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        assetType: params?.assetType ?? 'COLLATERAL',
+        asset_type: params?.assetType ?? 'COLLATERAL',
+        tokenId: params?.tokenId,
+        token_id: params?.tokenId,
+        signatureType: resolvedSignatureType,
+        signature_type: resolvedSignatureType,
+        tradingWalletAddress: resolvedTradingWallet,
+        funderAddress: resolvedTradingWallet,
+        connectedEoa: address,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null) as { error?: string } | null;
+      throw new Error(data?.error ?? 'Balance allowance update failed.');
+    }
+  }, [
+    address,
+    chainId,
+    hasApiCreds,
+    initialized,
+    tradingSignatureType,
+    tradingWalletAddress,
+    walletClient,
+  ]);
+
   const ensureApprovals = useCallback(
     async (token: string, spender: string, amount: bigint) => {
       if (!relayClient || !proxyAddress || !walletClient || !address) {
@@ -410,6 +506,11 @@ export const usePolymarketSession = (
         args: [proxyAddress as `0x${string}`, spender as `0x${string}`],
       });
       if (typeof allowance === 'bigint' && allowance >= amount) {
+        await syncBalanceAllowance({
+          assetType: 'COLLATERAL',
+          signatureType: tradingSignatureType ?? 2,
+          tradingWalletAddress: proxyAddress,
+        });
         return;
       }
       await ensureProxyDeployed({ force: true });
@@ -429,29 +530,23 @@ export const usePolymarketSession = (
       if (txn?.state === RelayerTransactionState.STATE_FAILED) {
         throw new Error('Relayer approval failed.');
       }
+      await syncBalanceAllowance({
+        assetType: 'COLLATERAL',
+        signatureType: tradingSignatureType ?? 2,
+        tradingWalletAddress: proxyAddress,
+      });
     },
-    [relayClient, walletClient, address, publicClient, proxyAddress, ensureProxyDeployed],
+    [
+      relayClient,
+      walletClient,
+      address,
+      publicClient,
+      proxyAddress,
+      ensureProxyDeployed,
+      syncBalanceAllowance,
+      tradingSignatureType,
+    ],
   );
-
-  const syncBalanceAllowance = useCallback(async (params?: {
-    assetType?: 'COLLATERAL' | 'CONDITIONAL';
-    tokenId?: string;
-    signatureType?: 2 | 3;
-  }) => {
-    const res = await fetch('/api/polymarket/balance-allowance/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        assetType: params?.assetType ?? 'COLLATERAL',
-        tokenId: params?.tokenId,
-        signatureType: params?.signatureType ?? 3,
-      }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => null) as { error?: string } | null;
-      throw new Error(data?.error ?? 'Balance allowance update failed.');
-    }
-  }, []);
 
   const ensureDepositWalletApprovals = useCallback(
     async (token: string, spender: string, amount: bigint) => {
@@ -466,7 +561,11 @@ export const usePolymarketSession = (
         args: [walletAddress as `0x${string}`, spender as `0x${string}`],
       });
       if (typeof allowance === 'bigint' && allowance >= amount) {
-        await syncBalanceAllowance({ assetType: 'COLLATERAL', signatureType: 3 });
+        await syncBalanceAllowance({
+          assetType: 'COLLATERAL',
+          signatureType: 3,
+          tradingWalletAddress: walletAddress,
+        });
         return;
       }
       const data = encodeFunctionData({
@@ -481,7 +580,11 @@ export const usePolymarketSession = (
         walletAddress,
         calls: [{ target: token, data, value: '0' }],
       });
-      await syncBalanceAllowance({ assetType: 'COLLATERAL', signatureType: 3 });
+      await syncBalanceAllowance({
+        assetType: 'COLLATERAL',
+        signatureType: 3,
+        tradingWalletAddress: walletAddress,
+      });
     },
     [
       address,
@@ -701,6 +804,8 @@ export const usePolymarketSession = (
       depositWalletDeployed,
       tradingWalletAddress,
       tradingSignatureType,
+      initialized,
+      hasApiCreds,
       isLoading,
       lastRefreshAt,
       error,
@@ -725,6 +830,8 @@ export const usePolymarketSession = (
       depositWalletDeployed,
       tradingWalletAddress,
       tradingSignatureType,
+      initialized,
+      hasApiCreds,
       isLoading,
       lastRefreshAt,
       error,

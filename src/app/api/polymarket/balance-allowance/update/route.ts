@@ -9,6 +9,16 @@ export const revalidate = 0;
 const CLOB_HOST = process.env.POLYMARKET_CLOB_URL ?? 'https://clob.polymarket.com';
 const ENDPOINT = '/balance-allowance/update';
 const ASSET_TYPES = new Set(['COLLATERAL', 'CONDITIONAL']);
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+
+const sameAddress = (left: string, right: string) =>
+  left.toLowerCase() === right.toLowerCase();
+
+const normalizeAddress = (value: unknown) =>
+  typeof value === 'string' && ADDRESS_RE.test(value) ? value : null;
+
+const hasCompleteL2Creds = (session: Awaited<ReturnType<typeof getSession>>) =>
+  Boolean(session.l2?.apiKey && session.l2.secret && session.l2.passphrase);
 
 const parseBody = async (request: NextRequest) => {
   const text = await request.text();
@@ -37,18 +47,38 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const assetType = typeof body.assetType === 'string' ? body.assetType : 'COLLATERAL';
-  const tokenId = typeof body.tokenId === 'string' ? body.tokenId : null;
-  const signatureType = Number(body.signatureType ?? 3);
+  const assetType =
+    typeof body.assetType === 'string'
+      ? body.assetType
+      : typeof body.asset_type === 'string'
+        ? body.asset_type
+        : 'COLLATERAL';
+  const tokenId =
+    typeof body.tokenId === 'string'
+      ? body.tokenId
+      : typeof body.token_id === 'string'
+        ? body.token_id
+        : null;
+  const signatureType = Number(body.signatureType ?? body.signature_type);
+  const tradingWalletAddress = normalizeAddress(
+    body.tradingWalletAddress ?? body.funderAddress ?? body.funder,
+  );
+  const connectedEoa = normalizeAddress(body.connectedEoa ?? body.authAddress);
   if (!ASSET_TYPES.has(assetType)) {
     return NextResponse.json(
       { ok: false, error: 'assetType must be COLLATERAL or CONDITIONAL.' },
       { status: 400, headers: { 'Cache-Control': 'no-store' } },
     );
   }
-  if (!Number.isInteger(signatureType) || signatureType < 0 || signatureType > 3) {
+  if (!Number.isInteger(signatureType) || signatureType < 1 || signatureType > 3) {
     return NextResponse.json(
-      { ok: false, error: 'signatureType must be 0, 1, 2, or 3.' },
+      { ok: false, error: 'signatureType must be 1, 2, or 3.' },
+      { status: 400, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
+  if (!tradingWalletAddress) {
+    return NextResponse.json(
+      { ok: false, error: 'tradingWalletAddress is required.' },
       { status: 400, headers: { 'Cache-Control': 'no-store' } },
     );
   }
@@ -62,26 +92,67 @@ export async function POST(request: NextRequest) {
       { status: 500, headers: { 'Cache-Control': 'no-store' } },
     );
   }
-  if (!session.l2 || !session.walletAddress || isSessionExpired(session)) {
-    if (isSessionExpired(session)) session.destroy();
+  const expired = isSessionExpired(session);
+  const sessionInitialized = Boolean(
+    hasCompleteL2Creds(session) && session.walletAddress && !expired,
+  );
+  console.info('[polymarket]', {
+    event: 'balance_allowance_update_requested',
+    component: 'balance_allowance',
+    connectedEoa: connectedEoa ?? session.walletAddress ?? null,
+    sessionInitialized,
+    signatureType,
+    tradingWalletAddress,
+    hasApiCreds: hasCompleteL2Creds(session),
+  });
+  if (!sessionInitialized) {
+    if (expired) session.destroy();
     return NextResponse.json(
-      { ok: false, error: 'Session not initialized.' },
+      {
+        ok: false,
+        error: 'Trading session is not initialized. Reconnect your wallet and approve the trading session prompt.',
+      },
       { status: 401, headers: { 'Cache-Control': 'no-store' } },
     );
   }
+  if (connectedEoa && session.walletAddress && !sameAddress(connectedEoa, session.walletAddress)) {
+    return NextResponse.json(
+      { ok: false, error: 'Connected wallet does not match active trading session.' },
+      { status: 401, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
+  if (
+    session.tradingWalletAddress &&
+    !sameAddress(session.tradingWalletAddress, tradingWalletAddress)
+  ) {
+    return NextResponse.json(
+      { ok: false, error: 'Trading wallet does not match active trading session.' },
+      { status: 409, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
+  if (session.signatureType && session.signatureType !== signatureType) {
+    return NextResponse.json(
+      { ok: false, error: 'Signature type does not match active trading session.' },
+      { status: 409, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
+  session.tradingWalletAddress = tradingWalletAddress;
+  session.signatureType = signatureType;
+  await session.save();
 
   const params = new URLSearchParams({
     asset_type: assetType,
     signature_type: String(signatureType),
   });
   if (tokenId) params.set('token_id', tokenId);
+  const requestPath = `${ENDPOINT}?${params.toString()}`;
 
   try {
     const headers = await buildL2Headers(session, {
       method: 'GET',
-      requestPath: ENDPOINT,
+      requestPath,
     });
-    const res = await fetch(`${CLOB_HOST}${ENDPOINT}?${params.toString()}`, {
+    const res = await fetch(`${CLOB_HOST}${requestPath}`, {
       method: 'GET',
       headers: {
         Accept: 'application/json',
@@ -107,6 +178,9 @@ export async function POST(request: NextRequest) {
         body: data,
         signatureType,
         assetType,
+        tradingWalletAddress,
+        connectedEoa: session.walletAddress,
+        hasApiCreds: hasCompleteL2Creds(session),
       });
       return NextResponse.json(
         { ok: false, error: 'Balance allowance update failed.', details: data },
@@ -119,6 +193,9 @@ export async function POST(request: NextRequest) {
       component: 'balance_allowance',
       signatureType,
       assetType,
+      tradingWalletAddress,
+      connectedEoa: session.walletAddress,
+      hasApiCreds: hasCompleteL2Creds(session),
       tokenId: tokenId ? `${tokenId.slice(0, 12)}...` : null,
     });
     return NextResponse.json({ ok: true, data }, {
@@ -131,6 +208,9 @@ export async function POST(request: NextRequest) {
       error: error instanceof Error ? error.message : String(error),
       signatureType,
       assetType,
+      tradingWalletAddress,
+      connectedEoa: session.walletAddress,
+      hasApiCreds: hasCompleteL2Creds(session),
     });
     return NextResponse.json(
       { ok: false, error: 'Balance allowance update failed.' },

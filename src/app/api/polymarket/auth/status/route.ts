@@ -31,11 +31,21 @@ export async function GET(request: NextRequest) {
     address && session.walletAddress
       ? address.toLowerCase() === session.walletAddress.toLowerCase()
       : true;
-  const ok = Boolean(
-    session.l2 && session.walletAddress && !expired && addressMatches,
+  const hasApiCreds = Boolean(
+    session.l2?.apiKey && session.l2.secret && session.l2.passphrase,
   );
+  const ok = Boolean(hasApiCreds && session.walletAddress && !expired && addressMatches);
   return NextResponse.json(
-    { ok, expired, addressMatches, walletAddress: session.walletAddress ?? null },
+    {
+      ok,
+      initialized: ok,
+      expired,
+      addressMatches,
+      walletAddress: session.walletAddress ?? null,
+      tradingWalletAddress: session.tradingWalletAddress ?? null,
+      signatureType: session.signatureType ?? null,
+      hasApiCreds,
+    },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }

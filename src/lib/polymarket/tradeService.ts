@@ -81,15 +81,40 @@ const fetchBuilderCode = async () => {
 export const ensureTradingSession = async (
   signer: ViemSigner,
   chainId = TRADE_CONFIG.chainId,
-  options?: { force?: boolean },
+  options?: {
+    force?: boolean;
+    tradingWalletAddress?: string | null;
+    signatureType?: number | null;
+  },
 ) => {
   const address = await signer.getAddress();
   if (!options?.force) {
-    const statusRes = await fetch(`/api/polymarket/auth/status?address=${address}`, {
+    const statusParams = new URLSearchParams({ address });
+    const statusRes = await fetch(`/api/polymarket/auth/status?${statusParams.toString()}`, {
       cache: 'no-store',
     });
-    const statusData = await safeJson<{ ok?: boolean }>(statusRes);
-    if (statusRes.ok && statusData?.ok) return true;
+    const statusData = await safeJson<{
+      ok?: boolean;
+      tradingWalletAddress?: string | null;
+      signatureType?: number | null;
+      hasApiCreds?: boolean;
+    }>(statusRes);
+    const sessionMatchesTradingContext =
+      (!options?.tradingWalletAddress ||
+        statusData?.tradingWalletAddress?.toLowerCase() ===
+          options.tradingWalletAddress.toLowerCase()) &&
+      (!options?.signatureType || statusData?.signatureType === options.signatureType);
+    if (statusRes.ok && statusData?.ok && sessionMatchesTradingContext) return true;
+    if (statusRes.ok && statusData?.hasApiCreds && statusData.ok && !sessionMatchesTradingContext) {
+      console.info('[polymarket]', {
+        event: 'trading_session_context_refresh',
+        component: 'trade_service',
+        connectedEoa: address,
+        tradingWalletAddress: options?.tradingWalletAddress ?? null,
+        signatureType: options?.signatureType ?? null,
+        hasApiCreds: statusData.hasApiCreds,
+      });
+    }
   }
   const l1Headers = await createL1Headers(
     signer as Parameters<typeof createL1Headers>[0],
@@ -101,6 +126,8 @@ export const ensureTradingSession = async (
     body: JSON.stringify({
       ...l1Headers,
       forceRefresh: options?.force === true,
+      tradingWalletAddress: options?.tradingWalletAddress ?? undefined,
+      signatureType: options?.signatureType ?? undefined,
     }),
   });
   const initData = await safeJson<{ ok?: boolean; error?: string }>(initRes);
@@ -128,7 +155,11 @@ const createAndPostOrderOnce = async ({
   forceSessionRefresh = false,
 }: CreateAndPostArgs & { forceSessionRefresh?: boolean }): Promise<OrderResponse> => {
   let execution = executionInput;
-  await ensureTradingSession(signer, TRADE_CONFIG.chainId, { force: forceSessionRefresh });
+  await ensureTradingSession(signer, TRADE_CONFIG.chainId, {
+    force: forceSessionRefresh,
+    tradingWalletAddress: funderAddress,
+    signatureType,
+  });
   const authAddress = await signer.getAddress();
   const builderCode = await fetchBuilderCode();
   assertBuilderCodeReady(builderCode);

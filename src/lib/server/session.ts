@@ -10,6 +10,8 @@ export type PolymarketSessionData = {
     passphrase: string;
   };
   walletAddress?: string;
+  tradingWalletAddress?: string;
+  signatureType?: number;
   createdAt?: number;
 };
 
