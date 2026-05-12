@@ -2,6 +2,9 @@ export type SuggestedTrade = {
   marketId: string;
   outcome: 'yes' | 'no';
   orderType: 'market' | 'limit';
+  side?: 'buy' | 'sell';
+  tokenId?: string;
+  maxShares?: string;
   suggestedPriceCents?: number;
   amountUsd?: string;
 };
@@ -25,6 +28,13 @@ const normalizeOrderType = (value: string | null) => {
   return null;
 };
 
+const normalizeSide = (value: string | null) => {
+  const raw = value?.trim().toLowerCase();
+  if (raw === 'sell') return 'sell';
+  if (raw === 'buy') return 'buy';
+  return null;
+};
+
 export const parseSuggestedTradeFromSearchParams = (
   params: SearchParamsLike,
 ): SuggestedTrade | null => {
@@ -42,6 +52,9 @@ export const parseSuggestedTradeFromSearchParams = (
 
   const outcome = normalizeOutcome(params.get('outcome')) ?? 'yes';
   const orderType = normalizeOrderType(params.get('orderType')) ?? 'market';
+  const side = normalizeSide(params.get('side')) ?? undefined;
+  const tokenId = params.get('tokenId')?.trim() || undefined;
+  const maxShares = params.get('maxShares')?.trim() || undefined;
 
   const amountUsd = params.get('amountUsd') ?? undefined;
 
@@ -49,6 +62,9 @@ export const parseSuggestedTradeFromSearchParams = (
     marketId,
     outcome,
     orderType,
+    side,
+    tokenId,
+    maxShares,
     suggestedPriceCents: suggestedPriceCents != null ? suggestedPriceCents : undefined,
     amountUsd,
   };
@@ -59,6 +75,15 @@ export const buildSuggestedTradeQuery = (suggested: SuggestedTrade): string => {
   params.set('trade', suggested.marketId);
   params.set('outcome', suggested.outcome);
   params.set('orderType', suggested.orderType);
+  if (suggested.side) {
+    params.set('side', suggested.side);
+  }
+  if (suggested.tokenId) {
+    params.set('tokenId', suggested.tokenId);
+  }
+  if (suggested.maxShares) {
+    params.set('maxShares', suggested.maxShares);
+  }
   if (typeof suggested.suggestedPriceCents === 'number') {
     params.set(
       'suggestedPriceCents',

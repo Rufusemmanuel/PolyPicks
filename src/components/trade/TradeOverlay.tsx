@@ -9,6 +9,9 @@ import { SafeRemoteImage } from '@/components/ui/SafeRemoteImage';
 type InitialTradeState = {
   outcome?: 'yes' | 'no';
   orderType?: 'market' | 'limit';
+  side?: 'buy' | 'sell';
+  tokenId?: string;
+  maxShares?: string;
   limitPriceCents?: number;
   suggestedPriceCents?: number;
   amountUsd?: string;

@@ -193,6 +193,9 @@ function PageContent() {
     ? {
         outcome: suggestedTrade.outcome,
         orderType: suggestedTrade.orderType,
+        side: suggestedTrade.side,
+        tokenId: suggestedTrade.tokenId,
+        maxShares: suggestedTrade.maxShares,
         suggestedPriceCents: suggestedTrade.suggestedPriceCents,
         amountUsd: suggestedTrade.amountUsd,
       }
@@ -208,6 +211,9 @@ function PageContent() {
       'suggestedPriceCents',
       'limitPriceCents',
       'amountUsd',
+      'side',
+      'tokenId',
+      'maxShares',
       'tradeSession',
     ].forEach((key) => params.delete(key));
     const next = params.toString();

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { encodeFunctionData, formatUnits, parseUnits, erc20Abi } from 'viem';
 import { polygon } from 'viem/chains';
@@ -50,6 +51,52 @@ type PositionRow = {
   price: number | null;
   thumbnailUrl: string | null;
   createdAt: Date | null;
+  closed: boolean;
+  resolved: boolean;
+};
+
+type MarketStatus = {
+  closed: boolean;
+  resolved: boolean;
+};
+
+const normalizePositionOutcome = (value: string): 'yes' | 'no' => {
+  const raw = value.trim().toLowerCase();
+  if (raw === 'no' || raw === 'n' || raw === 'down' || raw === 'false') return 'no';
+  return 'yes';
+};
+
+const isClosedMarketPayload = (market: Record<string, unknown>): boolean => {
+  if (market.resolved === true || market.closed === true || market.isClosed === true) {
+    return true;
+  }
+  if (typeof market.status === 'string') {
+    const status = market.status.toLowerCase();
+    if (['closed', 'resolved', 'finalized', 'settled'].includes(status)) return true;
+  }
+  return Boolean(market.closedTime);
+};
+
+const fetchMarketStatuses = async (marketIds: string[]): Promise<Record<string, MarketStatus>> => {
+  const entries = await Promise.all(
+    marketIds.map(async (marketId) => {
+      try {
+        const res = await fetch(`/api/markets/${encodeURIComponent(marketId)}`);
+        if (!res.ok) return [marketId, { closed: false, resolved: false }] as const;
+        const market = (await res.json()) as Record<string, unknown>;
+        return [
+          marketId,
+          {
+            closed: isClosedMarketPayload(market),
+            resolved: market.resolved === true,
+          },
+        ] as const;
+      } catch {
+        return [marketId, { closed: false, resolved: false }] as const;
+      }
+    }),
+  );
+  return Object.fromEntries(entries);
 };
 
 const fetchPositions = async (address: string): Promise<PositionRow[]> => {
@@ -104,6 +151,8 @@ const fetchPositions = async (address: string): Promise<PositionRow[]> => {
           ? parseUnits(rawSize.toString(), 6)
           : parseUnits(String(rawSize), 6);
       const price = typeof row.curPrice === 'number' ? row.curPrice : null;
+      const closed = row.closed === true || row.isClosed === true;
+      const resolved = row.resolved === true || row.isResolved === true;
       return {
         marketId,
         conditionId,
@@ -114,12 +163,15 @@ const fetchPositions = async (address: string): Promise<PositionRow[]> => {
         price,
         thumbnailUrl,
         createdAt: createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt : null,
+        closed,
+        resolved,
       };
     })
     .filter((row) => row.marketId && row.tokenId && row.balanceBase > 0n);
 };
 
 export default function WalletPage() {
+  const router = useRouter();
   const { isDark } = useTheme();
   const {
     address,
@@ -353,7 +405,41 @@ export default function WalletPage() {
     }
   };
 
-  const openPositions = positionsQuery.data ?? [];
+  const openPositions = useMemo(() => positionsQuery.data ?? [], [positionsQuery.data]);
+  const positionMarketIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          openPositions
+            .map((row) => row.marketId ?? row.conditionId)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ),
+    [openPositions],
+  );
+  const marketStatusesQuery = useQuery({
+    queryKey: ['wallet-position-market-statuses', positionMarketIds],
+    enabled: positionMarketIds.length > 0,
+    queryFn: async () => fetchMarketStatuses(positionMarketIds),
+    staleTime: 30_000,
+  });
+
+  const handleSellPosition = useCallback(
+    (row: PositionRow) => {
+      const marketId = row.marketId ?? row.conditionId;
+      if (!marketId || !row.tokenId || row.balanceBase <= 0n) return;
+      const params = new URLSearchParams();
+      params.set('trade', marketId);
+      params.set('outcome', normalizePositionOutcome(row.outcomeLabel));
+      params.set('side', 'sell');
+      params.set('tokenId', row.tokenId);
+      params.set('maxShares', formatUnits(row.balanceBase, 6));
+      params.set('orderType', 'market');
+      params.set('tradeSession', `wallet-${marketId}-${row.tokenId}-${Date.now()}`);
+      router.push(`/?${params.toString()}`);
+    },
+    [router],
+  );
 
   return (
     <main
@@ -549,6 +635,11 @@ export default function WalletPage() {
               const amountLabel =
                 amountValue > 0 && amountValue < 0.01 ? '<0.01' : amountValue.toFixed(2);
               const marketId = row.marketId ?? row.conditionId ?? '';
+              const marketStatus = marketStatusesQuery.data?.[marketId];
+              const isMarketClosed =
+                row.closed || row.resolved || marketStatus?.closed === true || marketStatus?.resolved === true;
+              const sellDisabled =
+                row.balanceBase <= 0n || !row.tokenId || !marketId || isMarketClosed;
               const timestampLabel =
                 row.createdAt != null
                   ? formatDistanceToNow(row.createdAt, { addSuffix: true })
@@ -598,7 +689,7 @@ export default function WalletPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="ml-auto flex flex-wrap items-center gap-6 text-sm">
+                  <div className="ml-auto flex flex-wrap items-center gap-3 text-sm sm:gap-6">
                     <div className="text-right">
                       <p className="text-xs text-slate-400">Amount</p>
                       <p className="font-semibold">{amountLabel} shares</p>
@@ -609,6 +700,23 @@ export default function WalletPage() {
                         {row.price != null ? `${Math.round(row.price * 100)}c` : '-'}
                       </p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => handleSellPosition(row)}
+                      disabled={sellDisabled}
+                      title={
+                        isMarketClosed
+                          ? 'Market closed'
+                          : row.balanceBase <= 0n
+                            ? 'No shares available'
+                            : undefined
+                      }
+                      className={`${buttonSecondary} h-8 px-3 text-xs font-semibold ${
+                        sellDisabled ? 'opacity-50' : ''
+                      }`}
+                    >
+                      {isMarketClosed ? 'Market closed' : 'Sell'}
+                    </button>
                   </div>
                 </div>
               );

@@ -31,6 +31,9 @@ type Props = {
   initialTradeState?: {
     outcome?: 'yes' | 'no';
     orderType?: 'market' | 'limit';
+    side?: 'buy' | 'sell';
+    tokenId?: string;
+    maxShares?: string;
     limitPriceCents?: number;
     suggestedPriceCents?: number;
     amountUsd?: string;
@@ -88,6 +91,10 @@ export function TradeExperience({
     outcomeTokenIds[1] ??
     null;
   const tokenId = selectedOutcome === 'yes' ? yesTokenId : noTokenId;
+  const marketClosed =
+    Boolean(market?.resolved) ||
+    Boolean(market?.closed) ||
+    Boolean(market?.closedTime);
   const tradingWalletAddress = polymarketSession.tradingWalletAddress;
 
   const yesOrderBook = useOrderBook(yesTokenId, TRADE_CONFIG.orderbookPollMs);
@@ -106,7 +113,13 @@ export function TradeExperience({
     if (!initialTradeState) return;
     const key = JSON.stringify({ marketId, initialTradeState, initialTradeKey });
     if (lastInitKey.current === key) return;
-    if (initialTradeState.outcome === 'yes' || initialTradeState.outcome === 'no') {
+    if (initialTradeState.tokenId && initialTradeState.tokenId === yesTokenId) {
+      skipBookResetRef.current = true;
+      setSelectedOutcome('yes');
+    } else if (initialTradeState.tokenId && initialTradeState.tokenId === noTokenId) {
+      skipBookResetRef.current = true;
+      setSelectedOutcome('no');
+    } else if (initialTradeState.outcome === 'yes' || initialTradeState.outcome === 'no') {
       skipBookResetRef.current = true;
       setSelectedOutcome(initialTradeState.outcome);
     }
@@ -116,7 +129,7 @@ export function TradeExperience({
       setBookSelection(null);
     }
     lastInitKey.current = key;
-  }, [initialTradeState, marketId]);
+  }, [initialTradeKey, initialTradeState, marketId, noTokenId, yesTokenId]);
 
   const outcomePrices = useMemo(() => {
     if (!market?.outcomePrices?.length) return { yes: null, no: null };
@@ -432,6 +445,7 @@ export function TradeExperience({
         noPrice={noOrderBook.bestAsk ?? noOrderBook.bestBid ?? outcomePrices.no}
         initialTradeState={initialTradeState}
         initialTradeKey={initialTradeKey}
+        marketClosed={marketClosed}
       />
     </div>
   );

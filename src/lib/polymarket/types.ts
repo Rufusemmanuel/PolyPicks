@@ -161,6 +161,7 @@ export type MarketDetailsResponse = {
   tags?: string[];
   volume: number;
   closesAt: string;
+  closed?: boolean;
   closedTime?: string | null;
   outcomes?: string[] | null;
   outcomePrices?: number[] | null;

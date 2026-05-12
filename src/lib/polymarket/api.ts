@@ -410,6 +410,7 @@ export const getMarketDetailsPayload = async (
     tags: tagLabels,
     volume: Number(market.volume ?? market.volumeNum ?? 0),
     closesAt: market.endDate,
+    closed: Boolean(market.closed),
     closedTime: market.closedTime ?? null,
     outcomes: outcomeData.labels.length ? outcomeData.labels : null,
     outcomePrices: outcomeData.prices.length ? outcomeData.prices : null,

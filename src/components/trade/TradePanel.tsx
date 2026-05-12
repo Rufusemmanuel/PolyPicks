@@ -50,11 +50,15 @@ type Props = {
   initialTradeState?: {
     outcome?: 'yes' | 'no';
     orderType?: 'market' | 'limit';
+    side?: 'buy' | 'sell';
+    tokenId?: string;
+    maxShares?: string;
     limitPriceCents?: number;
     suggestedPriceCents?: number;
     amountUsd?: string;
   };
   initialTradeKey?: string;
+  marketClosed?: boolean;
 };
 
 const roundTo = (value: number, decimals = 6) => {
@@ -125,6 +129,7 @@ export function TradePanel({
   proxyWalletAddress,
   initialTradeState,
   initialTradeKey,
+  marketClosed = false,
 }: Props) {
   const { isDark } = useTheme();
   const sessionQuery = useSession();
@@ -210,6 +215,9 @@ export function TradePanel({
     if (initialTradeState.orderType === 'limit' || initialTradeState.orderType === 'market') {
       setOrderType(initialTradeState.orderType === 'limit' ? 'LIMIT' : 'MARKET');
     }
+    if (initialTradeState.side === 'sell' || initialTradeState.side === 'buy') {
+      setTradeSide(initialTradeState.side === 'sell' ? 'SELL' : 'BUY');
+    }
     if (
       initialTradeState.orderType === 'limit' &&
       typeof initialTradeState.limitPriceCents === 'number'
@@ -219,6 +227,17 @@ export function TradePanel({
     }
     if (typeof initialTradeState.amountUsd === 'string' && initialTradeState.amountUsd.trim()) {
       setAmount(initialTradeState.amountUsd);
+    }
+    if (
+      initialTradeState.side === 'sell' &&
+      typeof initialTradeState.maxShares === 'string' &&
+      initialTradeState.maxShares.trim()
+    ) {
+      if (initialTradeState.orderType === 'limit') {
+        setShares(initialTradeState.maxShares);
+      } else {
+        setAmount(initialTradeState.maxShares);
+      }
     }
     lastInitKey.current = key;
   }, [initialTradeState, marketId, initialTradeKey]);
@@ -418,6 +437,7 @@ export function TradePanel({
         ? tradingStatus.data.disabledReasons
         : ['Trading is disabled.']));
     }
+    if (marketClosed) blockers.push('Market closed.');
     if (sessionQuery.isLoading) blockers.push('User session is loading.');
     if (polymarketSession.isLoading) blockers.push('Polymarket wallet session is loading.');
     if (isPreparingDepositWallet) {
@@ -452,6 +472,7 @@ export function TradePanel({
     isSubmitting,
     limitPriceInvalid,
     marketPriceError,
+    marketClosed,
     minOrderSize,
     sessionQuery.isLoading,
     shareBalance,
@@ -479,6 +500,7 @@ export function TradePanel({
     !marketPriceError;
   const canSubmit =
     !tradingDisabled &&
+    !marketClosed &&
     polymarketSession.initialized &&
     !isPreparingDepositWallet &&
     Boolean(tradingWalletAddress && tradingSignatureType) &&
@@ -642,6 +664,10 @@ export function TradePanel({
     }
     if (tradingStatus.isError) {
       setMessage('Unable to verify trading status. Refresh and try again.');
+      return;
+    }
+    if (marketClosed) {
+      setMessage('Market closed.');
       return;
     }
     if (!tradingStatus.data?.enabled) {
