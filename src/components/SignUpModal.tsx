@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 
 type Props = {
   isOpen: boolean;
@@ -21,6 +22,11 @@ export function SignUpModal({ isOpen, isDark, onClose, onSuccess }: Props) {
   const [confirm, setConfirm] = useState('');
   const [errors, setErrors] = useState<Errors>({});
   const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) {
@@ -32,7 +38,21 @@ export function SignUpModal({ isOpen, isDark, onClose, onSuccess }: Props) {
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen || !mounted) return null;
 
   const validate = () => {
     const next: Errors = {};
@@ -80,16 +100,19 @@ export function SignUpModal({ isOpen, isDark, onClose, onSuccess }: Props) {
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
       <button
         type="button"
         aria-label="Close signup"
-        className="absolute inset-0 bg-black/50"
+        className="absolute inset-0 bg-black/60"
         onClick={onClose}
       />
       <div
-        className={`relative w-full max-w-md rounded-2xl border p-6 shadow-2xl ${
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="signup-modal-title"
+        className={`relative max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-md overflow-y-auto rounded-2xl border p-5 shadow-2xl sm:p-6 ${
           isDark
             ? 'border-slate-800 bg-[#0b1224] text-slate-100'
             : 'border-slate-200 bg-white text-slate-900'
@@ -100,7 +123,9 @@ export function SignUpModal({ isOpen, isDark, onClose, onSuccess }: Props) {
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-400">
               PolyPicks
             </p>
-            <h2 className="text-2xl font-semibold">Create your account</h2>
+            <h2 id="signup-modal-title" className="text-2xl font-semibold">
+              Create your account
+            </h2>
             <p className={isDark ? 'text-slate-400' : 'text-slate-500'}>
               Sign up to save markets you want to track.
             </p>
@@ -190,6 +215,7 @@ export function SignUpModal({ isOpen, isDark, onClose, onSuccess }: Props) {
           </button>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
