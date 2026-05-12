@@ -3,6 +3,9 @@ import { NextResponse } from 'next/server';
 import { getActiveMarkets } from '@/lib/polymarket/api';
 import type { MarketSummary } from '@/lib/polymarket/types';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const MIN_PRICE = 0.75;
 const MAX_PRICE = 0.95;
 const MIN_VOLUME = 1000;

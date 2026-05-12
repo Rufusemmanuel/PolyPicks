@@ -41,6 +41,9 @@ type SessionState = {
     conditionId: string;
     outcomeSlotCount?: number;
     indexSets?: bigint[];
+    tokenId?: string;
+    outcomeIndex?: number;
+    redeemable?: boolean;
   }) => Promise<void>;
   ensureProxyDeployed: (options?: { force?: boolean }) => Promise<string>;
   ensureDepositWalletDeployed: (options?: {
@@ -88,6 +91,44 @@ const conditionalTokensAbi = [
       { name: 'indexSets', type: 'uint256[]' },
     ],
     outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'payoutNumerators',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'conditionId', type: 'bytes32' },
+      { name: 'index', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'payoutDenominator',
+    stateMutability: 'view',
+    inputs: [{ name: 'conditionId', type: 'bytes32' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'getCollectionId',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'parentCollectionId', type: 'bytes32' },
+      { name: 'conditionId', type: 'bytes32' },
+      { name: 'indexSet', type: 'uint256' },
+    ],
+    outputs: [{ name: '', type: 'bytes32' }],
+  },
+  {
+    type: 'function',
+    name: 'getPositionId',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'collateralToken', type: 'address' },
+      { name: 'collectionId', type: 'bytes32' },
+    ],
+    outputs: [{ name: '', type: 'uint256' }],
   },
 ] as const;
 
@@ -812,6 +853,9 @@ export const usePolymarketSession = (
       conditionId: string;
       outcomeSlotCount?: number;
       indexSets?: bigint[];
+      tokenId?: string;
+      outcomeIndex?: number;
+      redeemable?: boolean;
     }) => {
       if (!relayClient || !walletClient || !address) {
         throw new Error('Relayer client not ready.');
@@ -820,22 +864,109 @@ export const usePolymarketSession = (
         throw new Error('Chain unavailable.');
       }
       const { collateral, conditionalTokens } = getContractConfig(chainId);
+      const outcomeSlotCount = params.outcomeSlotCount ?? 0;
+      if (outcomeSlotCount <= 0) {
+        throw new Error('Outcome count unavailable for redemption.');
+      }
+      if (!params.tokenId || params.outcomeIndex == null) {
+        throw new Error('Winning outcome data unavailable for redemption.');
+      }
+      if (params.outcomeIndex < 0 || params.outcomeIndex >= outcomeSlotCount) {
+        throw new Error('Winning outcome index is invalid.');
+      }
+      if (params.redeemable !== true) {
+        throw new Error('This position is not redeemable yet.');
+      }
+
+      const expectedIndexSet = 1n << BigInt(params.outcomeIndex);
       const indexSets =
         params.indexSets && params.indexSets.length
           ? params.indexSets
-          : (() => {
-              const count = params.outcomeSlotCount ?? 0;
-              if (count <= 0) {
-                return [];
-              }
-              if (count === 2) {
-                return [1n, 2n];
-              }
-              return Array.from({ length: count }, (_, i) => 1n << BigInt(i));
-            })();
+          : [expectedIndexSet];
       if (!indexSets.length) {
         throw new Error('Index sets unavailable for redemption.');
       }
+      if (indexSets.length !== 1 || indexSets[0] !== expectedIndexSet) {
+        throw new Error('Redeem index set does not match the winning outcome.');
+      }
+      const payoutNumerators = await Promise.all(
+        Array.from({ length: outcomeSlotCount }, (_, index) =>
+          publicClient.readContract({
+            address: conditionalTokens as `0x${string}`,
+            abi: conditionalTokensAbi,
+            functionName: 'payoutNumerators',
+            args: [params.conditionId as `0x${string}`, BigInt(index)],
+          }),
+        ),
+      );
+      const payoutDenominator = await publicClient
+        .readContract({
+          address: conditionalTokens as `0x${string}`,
+          abi: conditionalTokensAbi,
+          functionName: 'payoutDenominator',
+          args: [params.conditionId as `0x${string}`],
+        })
+        .catch(() => 0n);
+      const resolved =
+        payoutDenominator > 0n || payoutNumerators.some((numerator) => numerator > 0n);
+      const winningPayout = payoutNumerators[params.outcomeIndex] ?? 0n;
+      const collectionId = await publicClient.readContract({
+        address: conditionalTokens as `0x${string}`,
+        abi: conditionalTokensAbi,
+        functionName: 'getCollectionId',
+        args: [ZERO_BYTES32, params.conditionId as `0x${string}`, expectedIndexSet],
+      });
+      const expectedTokenId = await publicClient.readContract({
+        address: conditionalTokens as `0x${string}`,
+        abi: conditionalTokensAbi,
+        functionName: 'getPositionId',
+        args: [collateral as `0x${string}`, collectionId],
+      });
+      if (expectedTokenId !== BigInt(params.tokenId)) {
+        throw new Error('Held token does not match the winning outcome.');
+      }
+      const shouldUseDepositWallet =
+        walletMode === 'deposit-wallet' ||
+        tradingSignatureType === 3 ||
+        depositWalletRequired ||
+        proxyDeployed === false;
+      const holderAddress = shouldUseDepositWallet
+        ? depositWalletAddress ?? tradingWalletAddress
+        : proxyAddress ?? tradingWalletAddress;
+      if (!holderAddress) {
+        throw new Error('Trading wallet address unavailable.');
+      }
+      const redeemableBalance = await publicClient.readContract({
+        address: conditionalTokens as `0x${string}`,
+        abi: viemErc1155Abi,
+        functionName: 'balanceOf',
+        args: [holderAddress as `0x${string}`, BigInt(params.tokenId)],
+      });
+      const redeemable =
+        resolved &&
+        winningPayout > 0n &&
+        redeemableBalance > 0n &&
+        params.redeemable === true;
+      console.info('[polymarket] redeem preflight', {
+        conditionId: params.conditionId,
+        tokenId: params.tokenId,
+        outcomeIndex: params.outcomeIndex,
+        resolved,
+        redeemable,
+        payoutNumerators: payoutNumerators.map((numerator) => numerator.toString()),
+        holderAddress,
+        walletMode: shouldUseDepositWallet ? 'deposit-wallet' : 'legacy-proxy',
+      });
+      if (!resolved) {
+        throw new Error('Market payout is not finalized on-chain yet.');
+      }
+      if (winningPayout <= 0n) {
+        throw new Error('This outcome is not the redeemable winning outcome.');
+      }
+      if (redeemableBalance <= 0n) {
+        throw new Error('No redeemable shares found in this wallet.');
+      }
+
       const data = encodeFunctionData({
         abi: conditionalTokensAbi,
         functionName: 'redeemPositions',
@@ -846,11 +977,6 @@ export const usePolymarketSession = (
           indexSets,
         ],
       });
-      const shouldUseDepositWallet =
-        walletMode === 'deposit-wallet' ||
-        tradingSignatureType === 3 ||
-        depositWalletRequired ||
-        proxyDeployed === false;
       if (shouldUseDepositWallet) {
         const walletAddress = await ensureDepositWalletDeployed({
           force: true,
@@ -881,11 +1007,15 @@ export const usePolymarketSession = (
     [
       address,
       chainId,
+      depositWalletAddress,
       depositWalletRequired,
       ensureDepositWalletDeployed,
       ensureProxyDeployed,
+      proxyAddress,
       proxyDeployed,
+      publicClient,
       relayClient,
+      tradingWalletAddress,
       tradingSignatureType,
       walletClient,
       walletMode,

@@ -40,6 +40,9 @@ type Props = {
   };
 };
 
+const normalizeOutcomeLabel = (label: string | null | undefined) =>
+  label?.trim().toLowerCase() ?? '';
+
 export function TradeExperience({
   marketId,
   market,
@@ -73,9 +76,11 @@ export function TradeExperience({
   const cardSurface = isDark ? cardSurfaceDark : cardSurfaceLight;
   const buttonSecondary = isDark ? buttonSecondaryDark : buttonSecondaryLight;
 
-  const outcomeLabels = market?.outcomes ?? [];
-  const outcomeTokenIds = market?.outcomeTokenIds ?? [];
-  const normalizeOutcomeLabel = (label: string) => label.trim().toLowerCase();
+  const outcomeLabels = useMemo(() => market?.outcomes ?? [], [market?.outcomes]);
+  const outcomeTokenIds = useMemo(
+    () => market?.outcomeTokenIds ?? [],
+    [market?.outcomeTokenIds],
+  );
   const yesIndex = outcomeLabels.findIndex(
     (label) => normalizeOutcomeLabel(label) === 'yes',
   );
@@ -229,8 +234,29 @@ export function TradeExperience({
   );
   const isResolved = Boolean(market?.resolved);
   const winningTokenId = market?.winningOutcomeId ?? null;
+  const winningOutcomeIndex = useMemo(() => {
+    if (winningTokenId && outcomeTokenIds.length) {
+      const index = outcomeTokenIds.findIndex((id) => id === winningTokenId);
+      return index >= 0 ? index : null;
+    }
+    if (market?.winningOutcome && outcomeLabels.length) {
+      const winningOutcome = normalizeOutcomeLabel(market.winningOutcome);
+      const index = outcomeLabels.findIndex((label) => normalizeOutcomeLabel(label) === winningOutcome);
+      return index >= 0 ? index : null;
+    }
+    return null;
+  }, [market?.winningOutcome, outcomeLabels, outcomeTokenIds, winningTokenId]);
+  const confirmedWinningTokenId =
+    winningTokenId ??
+    (winningOutcomeIndex != null ? outcomeTokenIds[winningOutcomeIndex] ?? null : null);
+  const winningPosition = useMemo(() => {
+    if (!confirmedWinningTokenId) return null;
+    return positions.find((row) => row.tokenId === confirmedWinningTokenId) ?? null;
+  }, [confirmedWinningTokenId, positions]);
   const redeemable =
-    (yesPosition?.redeemable || noPosition?.redeemable) &&
+    winningPosition?.redeemable === true &&
+    winningOutcomeIndex != null &&
+    Boolean(confirmedWinningTokenId) &&
     Boolean(market?.conditionId) &&
     isResolved;
   const connectWallet = async () => {
@@ -255,10 +281,10 @@ export function TradeExperience({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-        marketId,
-        proxyWalletAddress: tradingWalletAddress,
-      }),
-    });
+          marketId,
+          proxyWalletAddress: tradingWalletAddress,
+        }),
+      });
       const data = (await res.json()) as {
         ok: boolean;
         conditionId?: string;
@@ -268,9 +294,28 @@ export function TradeExperience({
       if (!res.ok || !data.ok || !data.conditionId || !data.outcomeCount) {
         throw new Error(data.error ?? 'Redeem validation failed.');
       }
+      if (
+        !redeemable ||
+        !confirmedWinningTokenId ||
+        winningOutcomeIndex == null ||
+        !winningPosition?.redeemable
+      ) {
+        throw new Error('This position is not redeemable yet.');
+      }
+      console.info('[trade] redeem requested', {
+        conditionId: data.conditionId,
+        tokenId: confirmedWinningTokenId,
+        outcomeIndex: winningOutcomeIndex,
+        resolved: isResolved,
+        redeemable: winningPosition.redeemable,
+      });
       await polymarketSession.redeemPositions({
         conditionId: data.conditionId,
         outcomeSlotCount: data.outcomeCount,
+        indexSets: [1n << BigInt(winningOutcomeIndex)],
+        tokenId: confirmedWinningTokenId,
+        outcomeIndex: winningOutcomeIndex,
+        redeemable: winningPosition.redeemable,
       });
       setRedeemMessage('Redeem submitted. USDC will appear in your wallet.');
     } catch (error) {

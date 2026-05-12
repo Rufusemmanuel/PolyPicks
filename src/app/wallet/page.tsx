@@ -62,6 +62,8 @@ type MarketStatus = {
   resolved: boolean;
   conditionId: string | null;
   outcomeCount: number | null;
+  outcomeTokenIds: string[];
+  outcomes: string[];
   winningOutcomeId: string | null;
   winningOutcome: string | null;
 };
@@ -80,15 +82,24 @@ const normalizePositionOutcome = (value: string): 'yes' | 'no' => {
 const normalizeOutcomeLabel = (value: string | null | undefined) =>
   value?.trim().toLowerCase() ?? '';
 
-const isWinningPosition = (row: PositionRow, marketStatus?: MarketStatus) => {
-  if (!marketStatus?.resolved) return false;
-  if (row.tokenId && marketStatus.winningOutcomeId) {
-    return row.tokenId === marketStatus.winningOutcomeId;
+const getWinningOutcomeIndex = (row: PositionRow, marketStatus?: MarketStatus) => {
+  if (!marketStatus?.resolved) return null;
+  if (row.tokenId && marketStatus.winningOutcomeId && row.tokenId === marketStatus.winningOutcomeId) {
+    const index = marketStatus.outcomeTokenIds.findIndex((tokenId) => tokenId === row.tokenId);
+    return index >= 0 ? index : null;
   }
-  if (marketStatus.winningOutcome) {
-    return normalizeOutcomeLabel(row.outcomeLabel) === normalizeOutcomeLabel(marketStatus.winningOutcome);
+  if (
+    marketStatus.winningOutcome &&
+    normalizeOutcomeLabel(row.outcomeLabel) === normalizeOutcomeLabel(marketStatus.winningOutcome)
+  ) {
+    const index = marketStatus.outcomes.findIndex(
+      (outcome) => normalizeOutcomeLabel(outcome) === normalizeOutcomeLabel(marketStatus.winningOutcome),
+    );
+    if (index < 0) return null;
+    const outcomeTokenId = marketStatus.outcomeTokenIds[index];
+    return row.tokenId && outcomeTokenId === row.tokenId ? index : null;
   }
-  return row.redeemable;
+  return null;
 };
 
 const isClosedMarketPayload = (market: Record<string, unknown>): boolean => {
@@ -115,12 +126,20 @@ const fetchMarketStatuses = async (marketIds: string[]): Promise<Record<string, 
               resolved: false,
               conditionId: null,
               outcomeCount: null,
+              outcomeTokenIds: [],
+              outcomes: [],
               winningOutcomeId: null,
               winningOutcome: null,
             },
           ] as const;
         }
         const market = (await res.json()) as Record<string, unknown>;
+        const outcomeTokenIds = Array.isArray(market.outcomeTokenIds)
+          ? market.outcomeTokenIds.filter((tokenId): tokenId is string => typeof tokenId === 'string')
+          : [];
+        const outcomes = Array.isArray(market.outcomes)
+          ? market.outcomes.filter((outcome): outcome is string => typeof outcome === 'string')
+          : [];
         return [
           marketId,
           {
@@ -130,12 +149,9 @@ const fetchMarketStatuses = async (marketIds: string[]): Promise<Record<string, 
               typeof market.conditionId === 'string'
                 ? market.conditionId
                 : null,
-            outcomeCount:
-              Array.isArray(market.outcomeTokenIds)
-                ? market.outcomeTokenIds.length
-                : Array.isArray(market.outcomes)
-                  ? market.outcomes.length
-                  : null,
+            outcomeCount: outcomeTokenIds.length || outcomes.length || null,
+            outcomeTokenIds,
+            outcomes,
             winningOutcomeId:
               typeof market.winningOutcomeId === 'string'
                 ? market.winningOutcomeId
@@ -154,6 +170,8 @@ const fetchMarketStatuses = async (marketIds: string[]): Promise<Record<string, 
             resolved: false,
             conditionId: null,
             outcomeCount: null,
+            outcomeTokenIds: [],
+            outcomes: [],
             winningOutcomeId: null,
             winningOutcome: null,
           },
@@ -534,7 +552,14 @@ export default function WalletPage() {
     async (row: PositionRow, marketStatus: MarketStatus | undefined) => {
       const marketId = row.marketId ?? row.conditionId;
       const rowKey = `${marketId ?? 'market'}-${row.tokenId ?? row.outcomeLabel}`;
-      if (!marketId || !marketStatus?.resolved || !isWinningPosition(row, marketStatus)) {
+      const winningOutcomeIndex = getWinningOutcomeIndex(row, marketStatus);
+      if (
+        !marketId ||
+        !marketStatus?.resolved ||
+        !row.redeemable ||
+        !row.tokenId ||
+        winningOutcomeIndex == null
+      ) {
         setRedeemMessages((current) => ({
           ...current,
           [rowKey]: 'This position is not eligible for redemption.',
@@ -564,9 +589,20 @@ export default function WalletPage() {
         if (!res.ok || !data.ok || !conditionId || !outcomeCount) {
           throw new Error(data.error ?? 'Redeem validation failed.');
         }
+        console.info('[wallet] redeem requested', {
+          conditionId,
+          tokenId: row.tokenId,
+          outcomeIndex: winningOutcomeIndex,
+          resolved: marketStatus.resolved,
+          redeemable: row.redeemable,
+        });
         await polymarketSession.redeemPositions({
           conditionId,
           outcomeSlotCount: outcomeCount,
+          indexSets: [1n << BigInt(winningOutcomeIndex)],
+          tokenId: row.tokenId,
+          outcomeIndex: winningOutcomeIndex,
+          redeemable: row.redeemable,
         });
         setRedeemedKeys((current) => {
           const next = new Set(current);
@@ -812,23 +848,29 @@ export default function WalletPage() {
                 amountValue > 0 && amountValue < 0.01 ? '<0.01' : amountValue.toFixed(2);
               const marketId = row.marketId ?? row.conditionId ?? '';
               const marketStatus = marketStatusesQuery.data?.[marketId];
-              const isMarketClosed =
-                row.closed || row.resolved || marketStatus?.closed === true || marketStatus?.resolved === true;
+              const isMarketClosed = row.closed || marketStatus?.closed === true;
+              const isMarketResolved = row.resolved || marketStatus?.resolved === true;
+              const isSettlementState = isMarketClosed || isMarketResolved;
               const rowKey = `${marketId || 'market'}-${row.tokenId ?? row.outcomeLabel}`;
-              const positionWon = isWinningPosition(row, marketStatus);
+              const winningOutcomeIndex = getWinningOutcomeIndex(row, marketStatus);
+              const positionWon = winningOutcomeIndex != null;
               const isRedeeming = redeemingKey === rowKey;
               const isRedeemed = redeemedKeys.has(rowKey);
-              const isCheckingRedemption = isMarketClosed && !marketStatus;
+              const isCheckingRedemption = isSettlementState && !marketStatus;
               const canRedeem =
                 Boolean(tradingWalletAddress) &&
                 marketStatus?.resolved === true &&
+                row.redeemable === true &&
                 positionWon &&
+                row.tokenId != null &&
+                Boolean(marketStatus?.conditionId) &&
+                Boolean(marketStatus?.outcomeCount) &&
                 !isRedeemed &&
                 !isRedeeming;
               const sellDisabled =
-                row.balanceBase <= 0n || !row.tokenId || !marketId || isMarketClosed;
+                row.balanceBase <= 0n || !row.tokenId || !marketId || isSettlementState;
               const actionDisabled =
-                isMarketClosed
+                isSettlementState
                   ? !canRedeem
                   : sellDisabled;
               const timestampLabel =
@@ -894,7 +936,7 @@ export default function WalletPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        if (isMarketClosed) {
+                        if (isSettlementState) {
                           handleRedeemPosition(row, marketStatus).catch(() => null);
                           return;
                         }
@@ -902,14 +944,18 @@ export default function WalletPage() {
                       }}
                       disabled={actionDisabled}
                       title={
-                        isMarketClosed
+                        isSettlementState
                           ? isCheckingRedemption
                             ? 'Checking redemption status'
-                            : positionWon
+                            : !isMarketResolved
+                              ? 'Market is closed but not resolved yet'
+                              : positionWon && row.redeemable
                             ? isRedeemed
                               ? 'Redemption already submitted'
                               : 'Claim winning shares'
-                            : 'This outcome did not win'
+                              : positionWon
+                                ? 'Payout is not redeemable yet'
+                                : 'This outcome did not win'
                           : row.balanceBase <= 0n
                             ? 'No shares available'
                             : undefined
@@ -918,16 +964,20 @@ export default function WalletPage() {
                         actionDisabled ? 'opacity-50' : ''
                       }`}
                     >
-                      {isMarketClosed
+                      {isSettlementState
                         ? isCheckingRedemption
                           ? 'Checking...'
-                          : positionWon
+                          : !isMarketResolved
+                            ? 'Market closed'
+                            : positionWon && row.redeemable
                           ? isRedeeming
                             ? 'Redeeming...'
                             : isRedeemed
                               ? 'Redeemed'
                               : 'Claim Winnings'
-                          : 'No payout'
+                            : positionWon
+                              ? 'Not redeemable'
+                              : 'No payout'
                         : 'Sell'}
                     </button>
                   </div>
