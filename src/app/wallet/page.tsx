@@ -11,6 +11,7 @@ import { RelayerTransactionState } from '@polymarket/builder-relayer-client';
 import { getContractConfig } from '@polymarket/clob-client-v2';
 import { useTheme } from '@/components/theme-context';
 import { useInjectedWallet } from '@/hooks/useInjectedWallet';
+import { usePolymarketSession } from '@/lib/polymarket/usePolymarketSession';
 import {
   createRelayClient,
   deploySafeIfNeeded,
@@ -53,17 +54,41 @@ type PositionRow = {
   createdAt: Date | null;
   closed: boolean;
   resolved: boolean;
+  redeemable: boolean;
 };
 
 type MarketStatus = {
   closed: boolean;
   resolved: boolean;
+  conditionId: string | null;
+  outcomeCount: number | null;
+  winningOutcomeId: string | null;
+  winningOutcome: string | null;
+};
+
+type RelayUsage = {
+  todayRelayTransactions: number;
+  remainingEstimated: number;
 };
 
 const normalizePositionOutcome = (value: string): 'yes' | 'no' => {
   const raw = value.trim().toLowerCase();
   if (raw === 'no' || raw === 'n' || raw === 'down' || raw === 'false') return 'no';
   return 'yes';
+};
+
+const normalizeOutcomeLabel = (value: string | null | undefined) =>
+  value?.trim().toLowerCase() ?? '';
+
+const isWinningPosition = (row: PositionRow, marketStatus?: MarketStatus) => {
+  if (!marketStatus?.resolved) return false;
+  if (row.tokenId && marketStatus.winningOutcomeId) {
+    return row.tokenId === marketStatus.winningOutcomeId;
+  }
+  if (marketStatus.winningOutcome) {
+    return normalizeOutcomeLabel(row.outcomeLabel) === normalizeOutcomeLabel(marketStatus.winningOutcome);
+  }
+  return row.redeemable;
 };
 
 const isClosedMarketPayload = (market: Record<string, unknown>): boolean => {
@@ -82,21 +107,74 @@ const fetchMarketStatuses = async (marketIds: string[]): Promise<Record<string, 
     marketIds.map(async (marketId) => {
       try {
         const res = await fetch(`/api/markets/${encodeURIComponent(marketId)}`);
-        if (!res.ok) return [marketId, { closed: false, resolved: false }] as const;
+        if (!res.ok) {
+          return [
+            marketId,
+            {
+              closed: false,
+              resolved: false,
+              conditionId: null,
+              outcomeCount: null,
+              winningOutcomeId: null,
+              winningOutcome: null,
+            },
+          ] as const;
+        }
         const market = (await res.json()) as Record<string, unknown>;
         return [
           marketId,
           {
             closed: isClosedMarketPayload(market),
             resolved: market.resolved === true,
+            conditionId:
+              typeof market.conditionId === 'string'
+                ? market.conditionId
+                : null,
+            outcomeCount:
+              Array.isArray(market.outcomeTokenIds)
+                ? market.outcomeTokenIds.length
+                : Array.isArray(market.outcomes)
+                  ? market.outcomes.length
+                  : null,
+            winningOutcomeId:
+              typeof market.winningOutcomeId === 'string'
+                ? market.winningOutcomeId
+                : null,
+            winningOutcome:
+              typeof market.winningOutcome === 'string'
+                ? market.winningOutcome
+                : null,
           },
         ] as const;
       } catch {
-        return [marketId, { closed: false, resolved: false }] as const;
+        return [
+          marketId,
+          {
+            closed: false,
+            resolved: false,
+            conditionId: null,
+            outcomeCount: null,
+            winningOutcomeId: null,
+            winningOutcome: null,
+          },
+        ] as const;
       }
     }),
   );
   return Object.fromEntries(entries);
+};
+
+const fetchRelayUsage = async (): Promise<RelayUsage> => {
+  const res = await fetch('/api/admin/relay-usage', { cache: 'no-store' });
+  const data = (await res.json()) as RelayUsage | { error?: string };
+  if (
+    !res.ok ||
+    !('todayRelayTransactions' in data) ||
+    typeof data.todayRelayTransactions !== 'number'
+  ) {
+    throw new Error('error' in data && data.error ? data.error : 'Unable to load relay usage.');
+  }
+  return data;
 };
 
 const fetchPositions = async (address: string): Promise<PositionRow[]> => {
@@ -153,6 +231,7 @@ const fetchPositions = async (address: string): Promise<PositionRow[]> => {
       const price = typeof row.curPrice === 'number' ? row.curPrice : null;
       const closed = row.closed === true || row.isClosed === true;
       const resolved = row.resolved === true || row.isResolved === true;
+      const redeemable = row.redeemable === true;
       return {
         marketId,
         conditionId,
@@ -165,6 +244,7 @@ const fetchPositions = async (address: string): Promise<PositionRow[]> => {
         createdAt: createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt : null,
         closed,
         resolved,
+        redeemable,
       };
     })
     .filter((row) => row.marketId && row.tokenId && row.balanceBase > 0n);
@@ -184,6 +264,7 @@ export default function WalletPage() {
     ensurePolygon,
   } = useInjectedWallet();
   const publicClient = useMemo(() => getPolygonPublicClient(), []);
+  const polymarketSession = usePolymarketSession(walletClient, address, chainId);
   const [relayerClient, setRelayerClient] = useState<RelayClient | null>(null);
   const [proxyAddress, setProxyAddress] = useState<string | null>(null);
   const [proxyDeployed, setProxyDeployed] = useState<boolean | null>(null);
@@ -194,6 +275,9 @@ export default function WalletPage() {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawTo, setWithdrawTo] = useState('');
   const [withdrawBusy, setWithdrawBusy] = useState(false);
+  const [redeemingKey, setRedeemingKey] = useState<string | null>(null);
+  const [redeemedKeys, setRedeemedKeys] = useState<Set<string>>(() => new Set());
+  const [redeemMessages, setRedeemMessages] = useState<Record<string, string>>({});
   const isWalletReady = isConnected && isCorrectNetwork;
   const tradingWalletAddress =
     proxyDeployed === true
@@ -305,6 +389,11 @@ export default function WalletPage() {
     queryKey: ['wallet-positions', tradingWalletAddress],
     enabled: Boolean(tradingWalletAddress),
     queryFn: async () => fetchPositions(tradingWalletAddress!),
+  });
+  const relayUsageQuery = useQuery({
+    queryKey: ['admin-relay-usage'],
+    queryFn: fetchRelayUsage,
+    refetchInterval: 60_000,
   });
 
   const { collateral } = getContractConfig(polygon.id);
@@ -441,6 +530,80 @@ export default function WalletPage() {
     [router],
   );
 
+  const handleRedeemPosition = useCallback(
+    async (row: PositionRow, marketStatus: MarketStatus | undefined) => {
+      const marketId = row.marketId ?? row.conditionId;
+      const rowKey = `${marketId ?? 'market'}-${row.tokenId ?? row.outcomeLabel}`;
+      if (!marketId || !marketStatus?.resolved || !isWinningPosition(row, marketStatus)) {
+        setRedeemMessages((current) => ({
+          ...current,
+          [rowKey]: 'This position is not eligible for redemption.',
+        }));
+        return;
+      }
+      if (redeemingKey || redeemedKeys.has(rowKey)) return;
+      setRedeemingKey(rowKey);
+      setRedeemMessages((current) => ({ ...current, [rowKey]: 'Submitting redemption...' }));
+      try {
+        const res = await fetch('/api/polymarket/redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            marketId,
+            proxyWalletAddress: tradingWalletAddress,
+          }),
+        });
+        const data = (await res.json()) as {
+          ok: boolean;
+          conditionId?: string;
+          outcomeCount?: number;
+          error?: string;
+        };
+        const conditionId = data.conditionId ?? marketStatus.conditionId;
+        const outcomeCount = data.outcomeCount ?? marketStatus.outcomeCount;
+        if (!res.ok || !data.ok || !conditionId || !outcomeCount) {
+          throw new Error(data.error ?? 'Redeem validation failed.');
+        }
+        await polymarketSession.redeemPositions({
+          conditionId,
+          outcomeSlotCount: outcomeCount,
+        });
+        setRedeemedKeys((current) => {
+          const next = new Set(current);
+          next.add(rowKey);
+          return next;
+        });
+        setRedeemMessages((current) => ({
+          ...current,
+          [rowKey]: 'Redeem submitted. USDC balance will update shortly.',
+        }));
+        await Promise.all([
+          usdcBalanceQuery.refetch(),
+          positionsQuery.refetch(),
+          marketStatusesQuery.refetch(),
+          relayUsageQuery.refetch(),
+        ]);
+      } catch (error) {
+        setRedeemMessages((current) => ({
+          ...current,
+          [rowKey]: error instanceof Error ? error.message : 'Redeem failed.',
+        }));
+      } finally {
+        setRedeemingKey(null);
+      }
+    },
+    [
+      marketStatusesQuery,
+      polymarketSession,
+      positionsQuery,
+      redeemedKeys,
+      redeemingKey,
+      relayUsageQuery,
+      tradingWalletAddress,
+      usdcBalanceQuery,
+    ],
+  );
+
   return (
     <main
       className={
@@ -490,7 +653,7 @@ export default function WalletPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-4">
           <div className={`${cardBase} ${cardSurface} p-4`}>
             <p className={`${cardLabel} text-white/50`}>Trading wallet balance</p>
             <p className="mt-2 text-2xl font-semibold">
@@ -516,6 +679,19 @@ export default function WalletPage() {
             <p className="mt-2 text-2xl font-semibold">-</p>
             <p className={`mt-2 text-[11px] ${isDark ? 'text-white/40' : 'text-slate-500'}`}>
               Coming soon
+            </p>
+          </div>
+          <div className={`${cardBase} ${cardSurface} p-4`}>
+            <p className={`${cardLabel} text-white/50`}>Relay usage today</p>
+            <p className="mt-2 text-2xl font-semibold">
+              {relayUsageQuery.data
+                ? `${relayUsageQuery.data.todayRelayTransactions} / 100`
+                : '- / 100'}
+            </p>
+            <p className={`mt-2 text-[11px] ${isDark ? 'text-white/40' : 'text-slate-500'}`}>
+              {relayUsageQuery.data
+                ? `${relayUsageQuery.data.remainingEstimated} estimated remaining`
+                : 'Builder relayer transactions'}
             </p>
           </div>
         </div>
@@ -638,8 +814,23 @@ export default function WalletPage() {
               const marketStatus = marketStatusesQuery.data?.[marketId];
               const isMarketClosed =
                 row.closed || row.resolved || marketStatus?.closed === true || marketStatus?.resolved === true;
+              const rowKey = `${marketId || 'market'}-${row.tokenId ?? row.outcomeLabel}`;
+              const positionWon = isWinningPosition(row, marketStatus);
+              const isRedeeming = redeemingKey === rowKey;
+              const isRedeemed = redeemedKeys.has(rowKey);
+              const isCheckingRedemption = isMarketClosed && !marketStatus;
+              const canRedeem =
+                Boolean(tradingWalletAddress) &&
+                marketStatus?.resolved === true &&
+                positionWon &&
+                !isRedeemed &&
+                !isRedeeming;
               const sellDisabled =
                 row.balanceBase <= 0n || !row.tokenId || !marketId || isMarketClosed;
+              const actionDisabled =
+                isMarketClosed
+                  ? !canRedeem
+                  : sellDisabled;
               const timestampLabel =
                 row.createdAt != null
                   ? formatDistanceToNow(row.createdAt, { addSuffix: true })
@@ -702,22 +893,58 @@ export default function WalletPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleSellPosition(row)}
-                      disabled={sellDisabled}
+                      onClick={() => {
+                        if (isMarketClosed) {
+                          handleRedeemPosition(row, marketStatus).catch(() => null);
+                          return;
+                        }
+                        handleSellPosition(row);
+                      }}
+                      disabled={actionDisabled}
                       title={
                         isMarketClosed
-                          ? 'Market closed'
+                          ? isCheckingRedemption
+                            ? 'Checking redemption status'
+                            : positionWon
+                            ? isRedeemed
+                              ? 'Redemption already submitted'
+                              : 'Claim winning shares'
+                            : 'This outcome did not win'
                           : row.balanceBase <= 0n
                             ? 'No shares available'
                             : undefined
                       }
                       className={`${buttonSecondary} h-8 px-3 text-xs font-semibold ${
-                        sellDisabled ? 'opacity-50' : ''
+                        actionDisabled ? 'opacity-50' : ''
                       }`}
                     >
-                      {isMarketClosed ? 'Market closed' : 'Sell'}
+                      {isMarketClosed
+                        ? isCheckingRedemption
+                          ? 'Checking...'
+                          : positionWon
+                          ? isRedeeming
+                            ? 'Redeeming...'
+                            : isRedeemed
+                              ? 'Redeemed'
+                              : 'Claim Winnings'
+                          : 'No payout'
+                        : 'Sell'}
                     </button>
                   </div>
+                  {redeemMessages[rowKey] && (
+                    <p
+                      className={`basis-full text-right text-xs ${
+                        redeemMessages[rowKey].includes('submitted')
+                          || redeemMessages[rowKey].includes('Submitting')
+                          ? isDark
+                            ? 'text-blue-300'
+                            : 'text-blue-700'
+                          : 'text-red-400'
+                      }`}
+                    >
+                      {redeemMessages[rowKey]}
+                    </p>
+                  )}
                 </div>
               );
             })}

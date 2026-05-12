@@ -836,7 +836,6 @@ export const usePolymarketSession = (
       if (!indexSets.length) {
         throw new Error('Index sets unavailable for redemption.');
       }
-      await ensureProxyDeployed({ force: true });
       const data = encodeFunctionData({
         abi: conditionalTokensAbi,
         functionName: 'redeemPositions',
@@ -847,6 +846,26 @@ export const usePolymarketSession = (
           indexSets,
         ],
       });
+      const shouldUseDepositWallet =
+        walletMode === 'deposit-wallet' ||
+        tradingSignatureType === 3 ||
+        depositWalletRequired ||
+        proxyDeployed === false;
+      if (shouldUseDepositWallet) {
+        const walletAddress = await ensureDepositWalletDeployed({
+          force: true,
+          useDepositWallet: true,
+        });
+        await executeDepositWalletBatch({
+          client: relayClient,
+          walletClient,
+          ownerAddress: address,
+          walletAddress,
+          calls: [{ target: conditionalTokens, data, value: '0' }],
+        });
+        return;
+      }
+      await ensureProxyDeployed({ force: true });
       const response = await executeRelayerTransactions({
         client: relayClient,
         walletClient,
@@ -859,7 +878,18 @@ export const usePolymarketSession = (
         throw new Error('Redeem failed.');
       }
     },
-    [chainId, ensureProxyDeployed, relayClient, walletClient, address],
+    [
+      address,
+      chainId,
+      depositWalletRequired,
+      ensureDepositWalletDeployed,
+      ensureProxyDeployed,
+      proxyDeployed,
+      relayClient,
+      tradingSignatureType,
+      walletClient,
+      walletMode,
+    ],
   );
 
   const getErc1155Balance = useCallback(

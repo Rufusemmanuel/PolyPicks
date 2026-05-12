@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { BuilderSigner } from '@polymarket/builder-signing-sdk';
+import type { Prisma } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -108,6 +110,75 @@ const sanitizeRelayerPayload = (payload: Record<string, unknown>) => {
   };
 };
 
+const resolveWalletMode = (payloadType: string | null) => {
+  if (payloadType === 'WALLET' || payloadType === 'WALLET-CREATE') {
+    return 'deposit-wallet';
+  }
+  if (payloadType === 'SAFE' || payloadType === 'SAFE-CREATE' || payloadType === 'PROXY') {
+    return 'legacy-proxy';
+  }
+  return null;
+};
+
+const jsonScalar = (value: unknown): string | number | boolean | null => {
+  if (value == null) return null;
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return value;
+  }
+  return JSON.stringify(value);
+};
+
+const sanitizeRelayerResponse = (data: unknown, status: number): Prisma.InputJsonObject => {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return { status, body: jsonScalar(data) };
+  }
+  const body = data as Record<string, unknown>;
+  return {
+    status,
+    transactionID: jsonScalar(body.transactionID ?? body.transactionId ?? body.id ?? null),
+    transactionHash: jsonScalar(body.transactionHash ?? body.hash ?? null),
+    state: jsonScalar(body.state ?? null),
+    ok: jsonScalar(body.ok ?? null),
+  };
+};
+
+const recordRelaySuccess = async ({
+  payloadType,
+  fromAddress,
+  walletMode,
+  relayerResponse,
+}: {
+  payloadType: string;
+  fromAddress: string;
+  walletMode: string | null;
+  relayerResponse: Prisma.InputJsonObject;
+}) => {
+  try {
+    await prisma.relayEvent.create({
+      data: {
+        payloadType,
+        fromAddress,
+        walletMode,
+        success: true,
+        relayerResponse,
+      },
+    });
+  } catch (error) {
+    console.error('[polymarket]', {
+      event: 'relay_usage_persist_failed',
+      component: 'relayer_submit',
+      payloadType,
+      from: fromAddress,
+      walletMode,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
 export async function POST(request: NextRequest) {
   const rawHeaders = Array.from(request.headers.keys());
   if (
@@ -210,6 +281,28 @@ export async function POST(request: NextRequest) {
         { status: upstream.status, headers: { 'Cache-Control': 'no-store' } },
       );
     }
+
+    const payloadType = validation.debug.type!;
+    const fromAddress = validation.debug.from!;
+    const walletMode = resolveWalletMode(validation.debug.type);
+    const relayerResponse = sanitizeRelayerResponse(data, upstream.status);
+    console.info('[polymarket]', {
+      event: 'relayer_submit_succeeded',
+      component: 'relayer_submit',
+      payload: { type: payloadType },
+      payloadType,
+      from: fromAddress,
+      walletMode,
+      txHash: relayerResponse.transactionHash,
+      result: relayerResponse,
+      timestamp: new Date().toISOString(),
+    });
+    await recordRelaySuccess({
+      payloadType,
+      fromAddress,
+      walletMode,
+      relayerResponse,
+    });
 
     return NextResponse.json(data ?? { ok: true }, {
       headers: { 'Cache-Control': 'no-store' },

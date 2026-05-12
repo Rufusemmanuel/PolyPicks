@@ -73,6 +73,20 @@ model RoutedTrade {
   @@index([marketId])
 }
 
+model RelayEvent {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  payloadType     String
+  fromAddress     String
+  walletMode      String?
+  success         Boolean  @default(true)
+  relayerResponse Json?
+
+  @@index([createdAt])
+  @@index([payloadType, createdAt])
+  @@index([fromAddress, createdAt])
+}
+
 model Session {
   id        String   @id @default(cuid())
   userId    String
