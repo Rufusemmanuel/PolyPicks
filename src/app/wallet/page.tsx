@@ -603,6 +603,7 @@ export default function WalletPage() {
           tokenId: row.tokenId,
           outcomeIndex: winningOutcomeIndex,
           redeemable: row.redeemable,
+          marketResolved: marketStatus.resolved,
         });
         setRedeemedKeys((current) => {
           const next = new Set(current);

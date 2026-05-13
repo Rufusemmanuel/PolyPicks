@@ -44,6 +44,7 @@ type SessionState = {
     tokenId?: string;
     outcomeIndex?: number;
     redeemable?: boolean;
+    marketResolved?: boolean;
   }) => Promise<void>;
   ensureProxyDeployed: (options?: { force?: boolean }) => Promise<string>;
   ensureDepositWalletDeployed: (options?: {
@@ -856,6 +857,7 @@ export const usePolymarketSession = (
       tokenId?: string;
       outcomeIndex?: number;
       redeemable?: boolean;
+      marketResolved?: boolean;
     }) => {
       if (!relayClient || !walletClient || !address) {
         throw new Error('Relayer client not ready.');
@@ -871,6 +873,9 @@ export const usePolymarketSession = (
       if (!params.tokenId || params.outcomeIndex == null) {
         throw new Error('Winning outcome data unavailable for redemption.');
       }
+      if (params.marketResolved === false) {
+        throw new Error('Market is closed but not resolved yet.');
+      }
       if (params.outcomeIndex < 0 || params.outcomeIndex >= outcomeSlotCount) {
         throw new Error('Winning outcome index is invalid.');
       }
@@ -878,6 +883,9 @@ export const usePolymarketSession = (
         throw new Error('This position is not redeemable yet.');
       }
 
+      const collateralToken = collateral as `0x${string}`;
+      const CTF_ADDRESS = conditionalTokens as `0x${string}`;
+      const parentCollectionId = ZERO_BYTES32;
       const expectedIndexSet = 1n << BigInt(params.outcomeIndex);
       const indexSets =
         params.indexSets && params.indexSets.length
@@ -892,7 +900,7 @@ export const usePolymarketSession = (
       const payoutNumerators = await Promise.all(
         Array.from({ length: outcomeSlotCount }, (_, index) =>
           publicClient.readContract({
-            address: conditionalTokens as `0x${string}`,
+            address: CTF_ADDRESS,
             abi: conditionalTokensAbi,
             functionName: 'payoutNumerators',
             args: [params.conditionId as `0x${string}`, BigInt(index)],
@@ -901,7 +909,7 @@ export const usePolymarketSession = (
       );
       const payoutDenominator = await publicClient
         .readContract({
-          address: conditionalTokens as `0x${string}`,
+          address: CTF_ADDRESS,
           abi: conditionalTokensAbi,
           functionName: 'payoutDenominator',
           args: [params.conditionId as `0x${string}`],
@@ -911,16 +919,16 @@ export const usePolymarketSession = (
         payoutDenominator > 0n || payoutNumerators.some((numerator) => numerator > 0n);
       const winningPayout = payoutNumerators[params.outcomeIndex] ?? 0n;
       const collectionId = await publicClient.readContract({
-        address: conditionalTokens as `0x${string}`,
+        address: CTF_ADDRESS,
         abi: conditionalTokensAbi,
         functionName: 'getCollectionId',
-        args: [ZERO_BYTES32, params.conditionId as `0x${string}`, expectedIndexSet],
+        args: [parentCollectionId, params.conditionId as `0x${string}`, expectedIndexSet],
       });
       const expectedTokenId = await publicClient.readContract({
-        address: conditionalTokens as `0x${string}`,
+        address: CTF_ADDRESS,
         abi: conditionalTokensAbi,
         functionName: 'getPositionId',
-        args: [collateral as `0x${string}`, collectionId],
+        args: [collateralToken, collectionId],
       });
       if (expectedTokenId !== BigInt(params.tokenId)) {
         throw new Error('Held token does not match the winning outcome.');
@@ -937,7 +945,7 @@ export const usePolymarketSession = (
         throw new Error('Trading wallet address unavailable.');
       }
       const redeemableBalance = await publicClient.readContract({
-        address: conditionalTokens as `0x${string}`,
+        address: CTF_ADDRESS,
         abi: viemErc1155Abi,
         functionName: 'balanceOf',
         args: [holderAddress as `0x${string}`, BigInt(params.tokenId)],
@@ -948,9 +956,14 @@ export const usePolymarketSession = (
         redeemableBalance > 0n &&
         params.redeemable === true;
       console.info('[polymarket] redeem preflight', {
+        collateralToken,
+        parentCollectionId,
         conditionId: params.conditionId,
+        CTF_ADDRESS,
         tokenId: params.tokenId,
         outcomeIndex: params.outcomeIndex,
+        indexSets: indexSets.map((indexSet) => indexSet.toString()),
+        redeemableBalance: redeemableBalance.toString(),
         resolved,
         redeemable,
         payoutNumerators: payoutNumerators.map((numerator) => numerator.toString()),
@@ -971,8 +984,8 @@ export const usePolymarketSession = (
         abi: conditionalTokensAbi,
         functionName: 'redeemPositions',
         args: [
-          collateral as `0x${string}`,
-          ZERO_BYTES32,
+          collateralToken,
+          parentCollectionId,
           params.conditionId as `0x${string}`,
           indexSets,
         ],
@@ -987,7 +1000,7 @@ export const usePolymarketSession = (
           walletClient,
           ownerAddress: address,
           walletAddress,
-          calls: [{ target: conditionalTokens, data, value: '0' }],
+          calls: [{ target: CTF_ADDRESS, data, value: '0' }],
         });
         return;
       }
@@ -996,7 +1009,7 @@ export const usePolymarketSession = (
         client: relayClient,
         walletClient,
         address,
-        txns: [{ to: conditionalTokens, data, value: '0' }],
+        txns: [{ to: CTF_ADDRESS, data, value: '0' }],
         metadata: 'Redeem positions',
       });
       const txn = await response.wait();

@@ -316,6 +316,7 @@ export function TradeExperience({
         tokenId: confirmedWinningTokenId,
         outcomeIndex: winningOutcomeIndex,
         redeemable: winningPosition.redeemable,
+        marketResolved: isResolved,
       });
       setRedeemMessage('Redeem submitted. USDC will appear in your wallet.');
     } catch (error) {
