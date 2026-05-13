@@ -414,6 +414,11 @@ export function Navbar() {
           clearAuthParam();
         }}
         onSuccess={handleSignUpSuccess}
+        onLoginClick={() => {
+          setIsSignUpOpen(false);
+          setIsLoginOpen(true);
+          clearAuthParam();
+        }}
       />
       <LoginModal
         isOpen={isLoginOpen}
