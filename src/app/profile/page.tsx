@@ -12,6 +12,7 @@ import { useInjectedWallet } from '@/hooks/useInjectedWallet';
 import { usePolymarketSession } from '@/lib/polymarket/usePolymarketSession';
 import WalletPage from '@/app/wallet/page';
 import HistoryPage from '@/app/history/page';
+import { GeneratedProfileAvatar } from '@/components/GeneratedProfileAvatar';
 import {
   bodyText,
   buttonPrimary,
@@ -187,7 +188,7 @@ function ProfileHub() {
           : 'min-h-screen bg-slate-50 text-slate-900'
       }
     >
-      <div className="mx-auto max-w-7xl px-4 py-8 space-y-6">
+      <div className="mx-auto max-w-7xl px-4 py-7 space-y-5">
         <section
           className={`rounded-2xl border p-4 shadow-sm sm:p-5 ${
             isDark
@@ -197,7 +198,7 @@ function ProfileHub() {
         >
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-4">
-              <GeneratedAvatar name={user.name} isDark={isDark} />
+              <GeneratedProfileAvatar name={user.name} size={72} />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className={`${pageTitle} tracking-tight`}>Account Hub</h1>
@@ -425,58 +426,6 @@ function ProfileHub() {
         </div>
       </div>
     </main>
-  );
-}
-
-function hashName(name: string) {
-  let hash = 0;
-  for (let i = 0; i < name.length; i += 1) {
-    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  }
-  return hash;
-}
-
-function GeneratedAvatar({ name, isDark }: { name: string; isDark: boolean }) {
-  const hash = hashName(name);
-  const hueA = hash % 360;
-  const hueB = (hueA + 62 + (hash % 48)) % 360;
-  const hueC = (hueA + 180) % 360;
-  const offsetA = 16 + (hash % 24);
-  const offsetB = 42 + ((hash >> 5) % 20);
-  const radiusA = 22 + ((hash >> 9) % 10);
-  const radiusB = 12 + ((hash >> 14) % 8);
-
-  return (
-    <div
-      role="img"
-      aria-label={`${name} account avatar`}
-      className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border shadow-sm ${
-        isDark ? 'border-white/15 bg-white/10' : 'border-white bg-white'
-      }`}
-    >
-      <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden="true">
-        <defs>
-          <linearGradient id={`avatar-gradient-${hash}`} x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0%" stopColor={`hsl(${hueA} 92% 56%)`} />
-            <stop offset="100%" stopColor={`hsl(${hueB} 88% 48%)`} />
-          </linearGradient>
-        </defs>
-        <rect width="64" height="64" fill={`url(#avatar-gradient-${hash})`} />
-        <circle cx={offsetA} cy="18" r={radiusA} fill="rgba(255,255,255,0.28)" />
-        <circle cx={offsetB} cy="48" r={radiusB} fill={`hsl(${hueC} 90% 62% / 0.36)`} />
-        <path
-          d="M8 54 C18 38, 30 44, 40 28 C48 15, 56 18, 62 10 L62 64 L8 64 Z"
-          fill="rgba(5,12,32,0.22)"
-        />
-        <path
-          d="M18 20 C26 12, 38 12, 46 20"
-          fill="none"
-          stroke="rgba(255,255,255,0.52)"
-          strokeWidth="4"
-          strokeLinecap="round"
-        />
-      </svg>
-    </div>
   );
 }
 

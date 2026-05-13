@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSession } from '@/lib/useSession';
@@ -10,6 +10,7 @@ import { useNotifications } from '@/lib/useNotifications';
 import { SignUpModal } from '@/components/SignUpModal';
 import { LoginModal } from '@/components/LoginModal';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { GeneratedProfileAvatar } from '@/components/GeneratedProfileAvatar';
 import { useTheme } from '@/components/theme-context';
 import {
   buttonPrimary,
@@ -64,17 +65,6 @@ export function Navbar() {
       notificationsQuery.markAllRead().catch(() => null);
     }
   }, [isNotificationsOpen, notificationsQuery]);
-
-  const initials = useMemo(() => {
-    if (!user?.name) return '?';
-    return user.name
-      .split(' ')
-      .map((part) => part[0])
-      .filter(Boolean)
-      .slice(0, 2)
-      .join('')
-      .toUpperCase();
-  }, [user?.name]);
 
   const clearAuthParam = () => {
     if (!searchParams.get('auth') || !pathname) return;
@@ -267,15 +257,13 @@ export function Navbar() {
                 )}
               </div>
               <Link
-                  href="/profile?tab=overview"
-                  className={`${buttonSecondary} h-9 gap-2 px-3 text-sm font-semibold`}
-                >
-                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#002cff] text-[11px] text-white">
-                    {initials}
-                  </span>
-                  <span className="hidden max-w-[140px] truncate sm:inline">
-                    {user.name}
-                  </span>
+                href="/profile?tab=overview"
+                className={`${buttonSecondary} h-9 gap-2 px-2.5 pr-3 text-sm font-semibold hover:-translate-y-0.5`}
+              >
+                <GeneratedProfileAvatar name={user.name} size={28} rounded="circle" />
+                <span className="hidden max-w-[150px] truncate sm:inline">
+                  {user.name}
+                </span>
               </Link>
             </>
           )}
