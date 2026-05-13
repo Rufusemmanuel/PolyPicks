@@ -146,15 +146,10 @@ export function SignUpModal({ isOpen, isDark, onClose, onSuccess, onLoginClick }
         </div>
 
         <div className="grid gap-6 pt-1 md:grid-cols-[1.04fr_0.96fr] md:gap-8">
-          <div className="space-y-5">
-            <div className="flex items-center gap-3">
-              <Image src="/polypicks.png" alt="PolyPicks logo" width={38} height={38} />
-              <div>
-                <p className="text-sm font-semibold">PolyPicks</p>
-                <p className={isDark ? 'text-xs text-slate-500' : 'text-xs text-slate-500'}>
-                  Trading workspace
-                </p>
-              </div>
+          <div className="space-y-4">
+            <div className="flex items-center gap-3.5">
+              <Image src="/polypicks.png" alt="PolyPicks logo" width={42} height={42} />
+              <p className="text-xl font-bold tracking-tight">PolyPicks</p>
             </div>
             <div>
               <h2
@@ -171,7 +166,7 @@ export function SignUpModal({ isOpen, isDark, onClose, onSuccess, onLoginClick }
                 Powered by Polymarket
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center">
               <span
                 className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
                   isDark
@@ -180,24 +175,6 @@ export function SignUpModal({ isOpen, isDark, onClose, onSuccess, onLoginClick }
                 }`}
               >
                 Live market
-              </span>
-              <span
-                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                  isDark
-                    ? 'border-blue-400/20 bg-blue-400/10 text-blue-200'
-                    : 'border-blue-200 bg-blue-50 text-blue-700'
-                }`}
-              >
-                Buy Yes
-              </span>
-              <span
-                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                  isDark
-                    ? 'border-slate-600 bg-white/[0.04] text-slate-200'
-                    : 'border-slate-200 bg-white text-slate-700'
-                }`}
-              >
-                Sell Shares
               </span>
             </div>
             <ul className="space-y-3">

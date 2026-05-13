@@ -111,10 +111,10 @@ export function LoginModal({ isOpen, isDark, onClose, onSuccess }: Props) {
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="mb-4 flex items-center gap-3">
-              <Image src="/polypicks.png" alt="PolyPicks logo" width={34} height={34} />
+            <div className="mb-4 flex items-center gap-3.5">
+              <Image src="/polypicks.png" alt="PolyPicks logo" width={40} height={40} />
               <div>
-                <p className="text-sm font-semibold">PolyPicks</p>
+                <p className="text-xl font-bold tracking-tight">PolyPicks</p>
                 <p className="text-xs font-semibold uppercase tracking-wide text-blue-400">
                   Powered by Polymarket
                 </p>
