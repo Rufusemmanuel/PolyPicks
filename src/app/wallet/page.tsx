@@ -68,11 +68,6 @@ type MarketStatus = {
   winningOutcome: string | null;
 };
 
-type RelayUsage = {
-  todayRelayTransactions: number;
-  remainingEstimated: number;
-};
-
 const normalizePositionOutcome = (value: string): 'yes' | 'no' => {
   const raw = value.trim().toLowerCase();
   if (raw === 'no' || raw === 'n' || raw === 'down' || raw === 'false') return 'no';
@@ -180,19 +175,6 @@ const fetchMarketStatuses = async (marketIds: string[]): Promise<Record<string, 
     }),
   );
   return Object.fromEntries(entries);
-};
-
-const fetchRelayUsage = async (): Promise<RelayUsage> => {
-  const res = await fetch('/api/admin/relay-usage', { cache: 'no-store' });
-  const data = (await res.json()) as RelayUsage | { error?: string };
-  if (
-    !res.ok ||
-    !('todayRelayTransactions' in data) ||
-    typeof data.todayRelayTransactions !== 'number'
-  ) {
-    throw new Error('error' in data && data.error ? data.error : 'Unable to load relay usage.');
-  }
-  return data;
 };
 
 const fetchPositions = async (address: string): Promise<PositionRow[]> => {
@@ -408,12 +390,6 @@ export default function WalletPage() {
     enabled: Boolean(tradingWalletAddress),
     queryFn: async () => fetchPositions(tradingWalletAddress!),
   });
-  const relayUsageQuery = useQuery({
-    queryKey: ['admin-relay-usage'],
-    queryFn: fetchRelayUsage,
-    refetchInterval: 60_000,
-  });
-
   const { collateral } = getContractConfig(polygon.id);
   const usdcBalanceQuery = useQuery({
     queryKey: ['wallet-usdc-balance', tradingWalletAddress],
@@ -618,7 +594,6 @@ export default function WalletPage() {
           usdcBalanceQuery.refetch(),
           positionsQuery.refetch(),
           marketStatusesQuery.refetch(),
-          relayUsageQuery.refetch(),
         ]);
       } catch (error) {
         setRedeemMessages((current) => ({
@@ -635,7 +610,6 @@ export default function WalletPage() {
       positionsQuery,
       redeemedKeys,
       redeemingKey,
-      relayUsageQuery,
       tradingWalletAddress,
       usdcBalanceQuery,
     ],
@@ -690,7 +664,7 @@ export default function WalletPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3">
           <div className={`${cardBase} ${cardSurface} p-4`}>
             <p className={`${cardLabel} text-white/50`}>Trading wallet balance</p>
             <p className="mt-2 text-2xl font-semibold">
@@ -716,19 +690,6 @@ export default function WalletPage() {
             <p className="mt-2 text-2xl font-semibold">-</p>
             <p className={`mt-2 text-[11px] ${isDark ? 'text-white/40' : 'text-slate-500'}`}>
               Coming soon
-            </p>
-          </div>
-          <div className={`${cardBase} ${cardSurface} p-4`}>
-            <p className={`${cardLabel} text-white/50`}>Relay usage today</p>
-            <p className="mt-2 text-2xl font-semibold">
-              {relayUsageQuery.data
-                ? `${relayUsageQuery.data.todayRelayTransactions} / 100`
-                : '- / 100'}
-            </p>
-            <p className={`mt-2 text-[11px] ${isDark ? 'text-white/40' : 'text-slate-500'}`}>
-              {relayUsageQuery.data
-                ? `${relayUsageQuery.data.remainingEstimated} estimated remaining`
-                : 'Builder relayer transactions'}
             </p>
           </div>
         </div>
