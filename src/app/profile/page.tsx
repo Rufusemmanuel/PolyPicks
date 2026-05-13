@@ -25,20 +25,19 @@ import {
   sectionTitle,
 } from '@/lib/ui/classes';
 
-type AccountTab = 'overview' | 'wallet' | 'positions' | 'bookmarks' | 'history' | 'settings';
+type AccountTab = 'overview' | 'wallet' | 'bookmarks' | 'history' | 'settings';
 
 type PositionMetric = {
   balanceBase: bigint;
   price: number | null;
 };
 
-const accountTabs: Array<{ id: AccountTab; label: string }> = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'wallet', label: 'Wallet' },
-  { id: 'positions', label: 'Positions' },
-  { id: 'bookmarks', label: 'Bookmarks' },
-  { id: 'history', label: 'History' },
-  { id: 'settings', label: 'Settings' },
+const accountTabs: Array<{ id: AccountTab; label: string; icon: AccountTab }> = [
+  { id: 'overview', label: 'Overview', icon: 'overview' },
+  { id: 'wallet', label: 'Wallet', icon: 'wallet' },
+  { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmarks' },
+  { id: 'history', label: 'History', icon: 'history' },
+  { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
 const isAccountTab = (value: string | null): value is AccountTab =>
@@ -86,7 +85,8 @@ function ProfileHub() {
   type AnyRoute = Parameters<typeof router.push>[0];
   const asRoute = useCallback((href: string) => href as unknown as AnyRoute, []);
   const tabParam = searchParams.get('tab');
-  const activeTab: AccountTab = isAccountTab(tabParam) ? tabParam : 'overview';
+  const activeTab: AccountTab =
+    tabParam === 'positions' ? 'wallet' : isAccountTab(tabParam) ? tabParam : 'overview';
   const cardSurface = isDark ? cardSurfaceDark : cardSurfaceLight;
   const buttonSecondary = isDark ? buttonSecondaryDark : buttonSecondaryLight;
 
@@ -96,6 +96,12 @@ function ProfileHub() {
       router.push(asRoute('/?auth=login'));
     }
   }, [asRoute, sessionQuery.isLoading, user, router]);
+
+  useEffect(() => {
+    if (tabParam === 'positions') {
+      router.replace(asRoute('/profile?tab=wallet'), { scroll: false });
+    }
+  }, [asRoute, router, tabParam]);
 
   const positionsQuery = useQuery({
     queryKey: ['account-position-metrics', polymarketSession.tradingWalletAddress],
@@ -118,17 +124,6 @@ function ProfileHub() {
       return sum + amount * (row.price ?? 0);
     }, 0);
   }, [positionsQuery.data]);
-
-  const initials = useMemo(() => {
-    if (!user?.name) return '?';
-    return user.name
-      .split(' ')
-      .map((part) => part[0])
-      .filter(Boolean)
-      .slice(0, 2)
-      .join('')
-      .toUpperCase();
-  }, [user?.name]);
 
   const recentBookmarks = bookmarksQuery.data?.bookmarks.slice(0, 4) ?? [];
   const bookmarkCount = bookmarksQuery.data?.bookmarks.length ?? 0;
@@ -194,26 +189,18 @@ function ProfileHub() {
     >
       <div className="mx-auto max-w-7xl px-4 py-8 space-y-6">
         <section
-          className={`rounded-2xl border p-5 ${
+          className={`rounded-2xl border p-4 shadow-sm sm:p-5 ${
             isDark
               ? 'border-white/10 bg-[linear-gradient(135deg,rgba(0,44,255,0.18),rgba(15,24,44,0.85))]'
               : 'border-slate-200 bg-[linear-gradient(135deg,#eef4ff,#ffffff)]'
           }`}
         >
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div
-                className={`flex h-16 w-16 items-center justify-center rounded-2xl border text-lg font-bold ${
-                  isDark
-                    ? 'border-white/10 bg-white/10 text-white'
-                    : 'border-slate-200 bg-white text-slate-900'
-                }`}
-              >
-                {initials}
-              </div>
-              <div>
+            <div className="flex min-w-0 items-center gap-4">
+              <GeneratedAvatar name={user.name} isDark={isDark} />
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className={pageTitle}>Account Hub</h1>
+                  <h1 className={`${pageTitle} tracking-tight`}>Account Hub</h1>
                   <span
                     className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
                       isDark
@@ -224,8 +211,9 @@ function ProfileHub() {
                     Active
                   </span>
                 </div>
-                <p className={`${bodyText} ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                  {user.name} · Manage wallets, positions, saved markets, and trading history.
+                <p className={`${bodyText} mt-1 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                  <span className="font-semibold">{user.name}</span>{' '}
+                  Manage your wallet, saved markets, and trading history.
                 </p>
               </div>
             </div>
@@ -261,7 +249,7 @@ function ProfileHub() {
 
         <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
           <aside
-            className={`rounded-2xl border p-2 lg:sticky lg:top-24 lg:self-start ${
+            className={`rounded-2xl border p-2 shadow-sm lg:sticky lg:top-24 lg:self-start ${
               isDark ? 'border-white/10 bg-white/[0.03]' : 'border-slate-200 bg-white'
             }`}
           >
@@ -273,17 +261,18 @@ function ProfileHub() {
                     key={tab.id}
                     type="button"
                     onClick={() => setTab(tab.id)}
-                    className={`whitespace-nowrap rounded-xl px-4 py-3 text-left text-sm font-semibold transition ${
+                    className={`group flex min-w-max items-center gap-3 whitespace-nowrap rounded-xl px-4 py-3 text-left text-sm font-semibold transition lg:min-w-0 ${
                       active
                         ? isDark
-                          ? 'bg-blue-500/20 text-blue-100'
-                          : 'bg-blue-50 text-blue-700'
+                          ? 'bg-blue-500/20 text-blue-100 shadow-sm'
+                          : 'bg-blue-50 text-blue-700 shadow-sm'
                         : isDark
-                          ? 'text-slate-300 hover:bg-white/5'
-                          : 'text-slate-600 hover:bg-slate-50'
+                          ? 'text-slate-300 hover:bg-white/5 hover:text-white'
+                          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                     }`}
                   >
-                    {tab.label}
+                    <AccountTabIcon tab={tab.icon} active={active} />
+                    <span>{tab.label}</span>
                   </button>
                 );
               })}
@@ -363,7 +352,6 @@ function ProfileHub() {
             )}
 
             {activeTab === 'wallet' && <WalletPage />}
-            {activeTab === 'positions' && <WalletPage />}
             {activeTab === 'history' && <HistoryPage />}
             {activeTab === 'bookmarks' && (
               <div className={`${cardBase} ${cardSurface} p-5`}>
@@ -437,6 +425,111 @@ function ProfileHub() {
         </div>
       </div>
     </main>
+  );
+}
+
+function hashName(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+function GeneratedAvatar({ name, isDark }: { name: string; isDark: boolean }) {
+  const hash = hashName(name);
+  const hueA = hash % 360;
+  const hueB = (hueA + 62 + (hash % 48)) % 360;
+  const hueC = (hueA + 180) % 360;
+  const offsetA = 16 + (hash % 24);
+  const offsetB = 42 + ((hash >> 5) % 20);
+  const radiusA = 22 + ((hash >> 9) % 10);
+  const radiusB = 12 + ((hash >> 14) % 8);
+
+  return (
+    <div
+      role="img"
+      aria-label={`${name} account avatar`}
+      className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-2xl border shadow-sm ${
+        isDark ? 'border-white/15 bg-white/10' : 'border-white bg-white'
+      }`}
+    >
+      <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden="true">
+        <defs>
+          <linearGradient id={`avatar-gradient-${hash}`} x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stopColor={`hsl(${hueA} 92% 56%)`} />
+            <stop offset="100%" stopColor={`hsl(${hueB} 88% 48%)`} />
+          </linearGradient>
+        </defs>
+        <rect width="64" height="64" fill={`url(#avatar-gradient-${hash})`} />
+        <circle cx={offsetA} cy="18" r={radiusA} fill="rgba(255,255,255,0.28)" />
+        <circle cx={offsetB} cy="48" r={radiusB} fill={`hsl(${hueC} 90% 62% / 0.36)`} />
+        <path
+          d="M8 54 C18 38, 30 44, 40 28 C48 15, 56 18, 62 10 L62 64 L8 64 Z"
+          fill="rgba(5,12,32,0.22)"
+        />
+        <path
+          d="M18 20 C26 12, 38 12, 46 20"
+          fill="none"
+          stroke="rgba(255,255,255,0.52)"
+          strokeWidth="4"
+          strokeLinecap="round"
+        />
+      </svg>
+    </div>
+  );
+}
+
+function AccountTabIcon({ tab, active }: { tab: AccountTab; active: boolean }) {
+  const iconClass = active ? 'text-current' : 'text-current opacity-70 group-hover:opacity-100';
+  const common = {
+    className: `h-4 w-4 ${iconClass}`,
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+
+  if (tab === 'overview') {
+    return (
+      <svg viewBox="0 0 24 24" {...common}>
+        <path d="M4 13h6V4H4v9Z" />
+        <path d="M14 20h6V4h-6v16Z" />
+        <path d="M4 20h6v-3H4v3Z" />
+      </svg>
+    );
+  }
+  if (tab === 'wallet') {
+    return (
+      <svg viewBox="0 0 24 24" {...common}>
+        <path d="M4 7h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h13" />
+        <path d="M16 13h3" />
+      </svg>
+    );
+  }
+  if (tab === 'bookmarks') {
+    return (
+      <svg viewBox="0 0 24 24" {...common}>
+        <path d="M6 4h12v16l-6-3-6 3V4Z" />
+      </svg>
+    );
+  }
+  if (tab === 'history') {
+    return (
+      <svg viewBox="0 0 24 24" {...common}>
+        <path d="M4 12a8 8 0 1 0 2.3-5.7" />
+        <path d="M4 5v5h5" />
+        <path d="M12 8v5l3 2" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" {...common}>
+      <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" />
+      <path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.4 1a7 7 0 0 0-1.7-1L14.5 3h-5l-.3 3.1a7 7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.3 3.1h5l.3-3.1a7 7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.5c.1-.3.1-.7.1-1Z" />
+    </svg>
   );
 }
 

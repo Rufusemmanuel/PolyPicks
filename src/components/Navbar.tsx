@@ -27,9 +27,7 @@ export function Navbar() {
   const user = sessionQuery.data?.user ?? null;
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isSignUpOpen, setIsSignUpOpen] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const notificationsQuery = useNotifications(Boolean(user));
   const router = useRouter();
@@ -49,18 +47,16 @@ export function Navbar() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!isMenuOpen && !isNotificationsOpen) return;
+    if (!isNotificationsOpen) return;
     const handler = (event: MouseEvent) => {
       const target = event.target as Node;
-      const isOutsideMenu = menuRef.current && !menuRef.current.contains(target);
       const isOutsideNotifications =
         notificationsRef.current && !notificationsRef.current.contains(target);
-      if (isOutsideMenu) setIsMenuOpen(false);
       if (isOutsideNotifications) setIsNotificationsOpen(false);
     };
     document.addEventListener('click', handler);
     return () => document.removeEventListener('click', handler);
-  }, [isMenuOpen, isNotificationsOpen]);
+  }, [isNotificationsOpen]);
 
   useEffect(() => {
     if (!isNotificationsOpen) return;
@@ -98,14 +94,6 @@ export function Navbar() {
     queryClient.setQueryData(['session'], { user: nextUser });
     setIsSignUpOpen(false);
     clearAuthParam();
-  };
-
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    queryClient.setQueryData(['session'], { user: null });
-    queryClient.invalidateQueries({ queryKey: ['bookmarks'] });
-    setIsMenuOpen(false);
-    router.push(asRoute('/'));
   };
 
   const navLinkClass = (href: string) => {
@@ -189,7 +177,6 @@ export function Navbar() {
                   type="button"
                   onClick={() => {
                     setIsNotificationsOpen((open) => !open);
-                    setIsMenuOpen(false);
                   }}
                   className={iconButtonClass}
                   aria-label="Notifications"
@@ -279,13 +266,8 @@ export function Navbar() {
                   </div>
                 )}
               </div>
-              <div className="relative" ref={menuRef}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMenuOpen((open) => !open);
-                    setIsNotificationsOpen(false);
-                  }}
+              <Link
+                  href="/profile?tab=overview"
                   className={`${buttonSecondary} h-9 gap-2 px-3 text-sm font-semibold`}
                 >
                   <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#002cff] text-[11px] text-white">
@@ -294,84 +276,7 @@ export function Navbar() {
                   <span className="hidden max-w-[140px] truncate sm:inline">
                     {user.name}
                   </span>
-                  <svg
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                    className="h-4 w-4 text-slate-400"
-                    fill="currentColor"
-                  >
-                    <path d="M5.5 7.5 10 12l4.5-4.5-1.4-1.4L10 9.2 6.9 6.1 5.5 7.5z" />
-                  </svg>
-                </button>
-                {isMenuOpen && (
-                  <div
-                    className={`absolute right-0 z-50 mt-3 w-44 rounded-xl border p-2 text-sm shadow-lg backdrop-blur ${
-                      isDark
-                        ? 'border-white/10 bg-slate-950/95 text-slate-100'
-                        : 'border-slate-200 bg-white/95 text-slate-900'
-                    }`}
-                  >
-                    <Link
-                      href="/profile?tab=overview"
-                      className={`block rounded-lg px-3 py-2 transition ${
-                        isDark
-                          ? 'text-slate-200 hover:bg-slate-800'
-                          : 'text-slate-700 hover:bg-slate-100'
-                      }`}
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      Profile
-                    </Link>
-                    <Link
-                      href="/profile?tab=bookmarks"
-                      className={`block rounded-lg px-3 py-2 transition ${
-                        isDark
-                          ? 'text-slate-200 hover:bg-slate-800'
-                          : 'text-slate-700 hover:bg-slate-100'
-                      }`}
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      Bookmarks
-                    </Link>
-                    <Link
-                      href="/profile?tab=history"
-                      className={`block rounded-lg px-3 py-2 transition ${
-                        isDark
-                          ? 'text-slate-200 hover:bg-slate-800'
-                          : 'text-slate-700 hover:bg-slate-100'
-                      }`}
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      History
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsMenuOpen(false);
-                        router.push(asRoute('/profile?tab=wallet'));
-                      }}
-                      className={`w-full rounded-lg px-3 py-2 text-left transition ${
-                        isDark
-                          ? 'text-slate-200 hover:bg-slate-800'
-                          : 'text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      Wallet
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleLogout}
-                      className={`w-full rounded-lg px-3 py-2 text-left transition ${
-                        isDark
-                          ? 'text-slate-200 hover:bg-slate-800'
-                          : 'text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      Log out
-                    </button>
-                  </div>
-                )}
-              </div>
+              </Link>
             </>
           )}
         </div>
