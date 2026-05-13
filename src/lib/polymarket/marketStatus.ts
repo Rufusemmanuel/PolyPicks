@@ -2,7 +2,9 @@ type MarketLike = {
   status?: unknown;
   closed?: unknown;
   isClosed?: unknown;
+  resolved?: unknown;
   active?: unknown;
+  acceptingOrders?: unknown;
   tradingEnabled?: unknown;
   endDate?: unknown;
   end_time?: unknown;
@@ -31,16 +33,24 @@ export const isMarketClosed = (market?: MarketLike | null) => {
   if (statusClosed) return true;
   if (market.closed === true) return true;
   if (market.isClosed === true) return true;
-  if (market.active === false) return true;
-  if (market.tradingEnabled === false) return true;
+  if (market.resolved === true) return true;
 
   const closeValue =
+    market.closedTime ??
+    market.closeTime ??
     market.endDate ??
     market.end_time ??
-    market.closeTime ??
-    market.closedTime ??
     market.closesAt;
   const closeDate = parseDateValue(closeValue);
   if (!closeDate) return false;
-  return statusClosed && closeDate.getTime() <= Date.now();
+  return closeDate.getTime() <= Date.now();
+};
+
+export const isTradableMarket = (market?: MarketLike | null) => {
+  if (!market || typeof market !== 'object') return false;
+  if (isMarketClosed(market)) return false;
+  if (market.active === false) return false;
+  if (market.acceptingOrders === false) return false;
+  if (market.tradingEnabled === false) return false;
+  return true;
 };

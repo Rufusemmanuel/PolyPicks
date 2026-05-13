@@ -1,6 +1,7 @@
 // src/app/api/markets/route.ts
 import { NextResponse } from 'next/server';
 import { getActiveMarkets } from '@/lib/polymarket/api';
+import { isTradableMarket } from '@/lib/polymarket/marketStatus';
 import type { MarketSummary } from '@/lib/polymarket/types';
 
 export const dynamic = 'force-dynamic';
@@ -24,17 +25,16 @@ function getEffectiveDate(m: MarketSummary): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function baseFilter(markets: MarketSummary[], now: number): MarketSummary[] {
+function baseFilter(markets: MarketSummary[]): MarketSummary[] {
   return markets.filter((m) => {
+    if (!isTradableMarket(m)) return false;
+
     // price sanity
     const p = m.price?.price;
     if (typeof p !== 'number' || p < MIN_PRICE || p > MAX_PRICE) return false;
 
     // volume filter
     if (typeof m.volume === 'number' && m.volume < MIN_VOLUME) return false;
-
-    // drop clearly closed in the past
-    if (m.closedTime && m.closedTime.getTime() < now) return false;
 
     // must have valid effective date
     const eff = getEffectiveDate(m);
@@ -50,7 +50,7 @@ function filterByWindow(
   maxWindowMs: number,
   now: number,
 ): MarketSummary[] {
-  return baseFilter(markets, now).filter((m) => {
+  return baseFilter(markets).filter((m) => {
     const eff = getEffectiveDate(m);
     if (!eff) return false;
 
@@ -79,14 +79,14 @@ export async function GET() {
 
     if (debugRelax) {
       // Base filters only; no time windows
-      const relaxed = baseFilter(markets, now);
+      const relaxed = baseFilter(markets);
       console.log('[PolyPicks] debugRelax base-filtered length:', relaxed.length);
       console.log('[PolyPicks] debugRelax sample:', relaxed.slice(0, LOG_SAMPLE_SIZE));
       return NextResponse.json<MarketSummary[]>(relaxed);
     }
 
     // 0–24h inclusive
-    const window24 = baseFilter(markets, now).filter((m) => {
+    const window24 = baseFilter(markets).filter((m) => {
       const eff = getEffectiveDate(m);
       if (!eff) return false;
       const deltaMs = eff.getTime() - now;

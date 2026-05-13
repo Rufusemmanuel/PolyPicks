@@ -3,6 +3,7 @@
 import { POLYMARKET_CONFIG } from '../config';
 import { getTopOfBook } from './clob';
 import { resolveCategory } from './category';
+import { isTradableMarket } from './marketStatus';
 import { getPolymarketMarketUrl } from './url';
 import type {
   MarketDetailsResponse,
@@ -249,6 +250,9 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
         noTokenId: m.noTokenId ?? null,
         closedTime,
         closed: Boolean(m.closed),
+        active: typeof m.active === 'boolean' ? m.active : undefined,
+        acceptingOrders:
+          typeof m.acceptingOrders === 'boolean' ? m.acceptingOrders : undefined,
         outcomes: outcomeData.labels.length ? outcomeData.labels : null,
         outcomePrices: outcomeData.prices.length ? outcomeData.prices : null,
         outcomeTokenIds: outcomeData.tokenIds.length ? outcomeData.tokenIds : null,
@@ -333,6 +337,9 @@ export const getMarketDetails = async (
     noTokenId: market.noTokenId ?? null,
     closedTime: market.closedTime ? new Date(market.closedTime) : undefined,
     closed: Boolean(market.closed),
+    active: typeof market.active === 'boolean' ? market.active : undefined,
+    acceptingOrders:
+      typeof market.acceptingOrders === 'boolean' ? market.acceptingOrders : undefined,
     outcomes: outcomeData.labels.length ? outcomeData.labels : null,
     outcomePrices: outcomeData.prices.length ? outcomeData.prices : null,
     outcomeTokenIds: outcomeData.tokenIds.length ? outcomeData.tokenIds : null,
@@ -412,6 +419,9 @@ export const getMarketDetailsPayload = async (
     closesAt: market.endDate,
     closed: Boolean(market.closed),
     closedTime: market.closedTime ?? null,
+    active: typeof market.active === 'boolean' ? market.active : undefined,
+    acceptingOrders:
+      typeof market.acceptingOrders === 'boolean' ? market.acceptingOrders : undefined,
     outcomes: outcomeData.labels.length ? outcomeData.labels : null,
     outcomePrices: outcomeData.prices.length ? outcomeData.prices : null,
     outcomeTokenIds: outcomeData.tokenIds.length ? outcomeData.tokenIds : null,
@@ -448,7 +458,10 @@ export const getResolvedStatus = async (marketId: string): Promise<{
 
   const now = Date.now();
   const isClosed =
-    details.endDate.getTime() <= now || !!details.closedTime || details.closed;
+    !isTradableMarket(details) ||
+    details.endDate.getTime() <= now ||
+    !!details.closedTime ||
+    details.closed;
 
   if (!isClosed) return { resolved: false };
 

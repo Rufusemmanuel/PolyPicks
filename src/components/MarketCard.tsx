@@ -1,6 +1,7 @@
 import { differenceInMilliseconds, formatDistanceToNow } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
 import type { MarketSummary } from '@/lib/polymarket/types';
+import { isTradableMarket } from '@/lib/polymarket/marketStatus';
 import { SafeRemoteImage } from '@/components/ui/SafeRemoteImage';
 import {
   bodyText,
@@ -78,7 +79,8 @@ export function MarketCard({
   }, [remaining]);
   const thumbUrl = market.thumbnailUrl ?? null;
 
-  const isClosed = countdownLabel === 'Closed';
+  const isMarketTradable = isTradableMarket(market);
+  const isClosed = !isMarketTradable || countdownLabel === 'Closed';
   const buttonSecondaryClass = isDark ? buttonSecondary : buttonSecondaryLight;
   const secondaryTone = isDark ? 'border-white/15 bg-white/[0.07] text-white/90 hover:bg-white/10' : '';
   const chipMuted = isDark ? chipMutedDark : chipMutedLight;
@@ -119,7 +121,9 @@ export function MarketCard({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className={chipLive}>Live</span>
+            <span className={isMarketTradable ? chipLive : chipMuted}>
+              {isMarketTradable ? 'Live' : 'Closed'}
+            </span>
             <button
               type="button"
               aria-label={isBookmarked ? 'Remove bookmark' : 'Add bookmark'}
@@ -232,7 +236,7 @@ export function MarketCard({
             <button
               type="button"
               onClick={() => onTradeWithPolypicks?.(market)}
-              disabled={tradingDisabled}
+              disabled={tradingDisabled || !isMarketTradable}
               className={`${buttonPrimaryEmphasis} h-9 w-full justify-center px-4 text-sm font-medium`}
             >
               <span className="inline-flex items-center gap-2">

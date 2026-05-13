@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatUnits, parseUnits } from 'viem';
 import type { MarketDetailsResponse } from '@/lib/polymarket/types';
+import { isTradableMarket } from '@/lib/polymarket/marketStatus';
 import { useOrderBook } from '@/lib/polymarket/marketDataService';
 import { TRADE_CONFIG } from '@/lib/polymarket/tradeConfig';
 import { useTheme } from '@/components/theme-context';
@@ -96,10 +97,7 @@ export function TradeExperience({
     outcomeTokenIds[1] ??
     null;
   const tokenId = selectedOutcome === 'yes' ? yesTokenId : noTokenId;
-  const marketClosed =
-    Boolean(market?.resolved) ||
-    Boolean(market?.closed) ||
-    Boolean(market?.closedTime);
+  const marketClosed = !isTradableMarket(market);
   const tradingWalletAddress = polymarketSession.tradingWalletAddress;
 
   const yesOrderBook = useOrderBook(yesTokenId, TRADE_CONFIG.orderbookPollMs);
@@ -346,9 +344,22 @@ export function TradeExperience({
                 <p className={`${cardLabel} ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                   Market
                 </p>
-                <h2 className="mt-2 text-2xl font-semibold">
-                  {market?.title ?? 'Loading market...'}
-                </h2>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <h2 className="text-2xl font-semibold">
+                    {market?.title ?? 'Loading market...'}
+                  </h2>
+                  {market && marketClosed && (
+                    <span
+                      className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                        isDark
+                          ? 'border-slate-700 bg-slate-900 text-slate-300'
+                          : 'border-slate-200 bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      Closed
+                    </span>
+                  )}
+                </div>
               </div>
               <div
                 className={`relative h-14 w-14 overflow-hidden rounded-2xl border ${

@@ -20,6 +20,8 @@ export type MarketSummary = {
   noTokenId?: string | null;
   closedTime?: Date;
   closed?: boolean;
+  active?: boolean;
+  acceptingOrders?: boolean;
   outcomes?: string[] | null;
   outcomePrices?: number[] | null;
   outcomeTokenIds?: string[] | null;
@@ -82,6 +84,8 @@ export type RawMarket = {
   lowerBoundDate?: string | null;
   upperBoundDate?: string | null;
   closedTime?: string | null;
+  active?: boolean;
+  acceptingOrders?: boolean;
 
   // Outcome prices as JSON strings
   outcomes?: string;       // e.g. '["Yes","No"]'
@@ -163,6 +167,8 @@ export type MarketDetailsResponse = {
   closesAt: string;
   closed?: boolean;
   closedTime?: string | null;
+  active?: boolean;
+  acceptingOrders?: boolean;
   outcomes?: string[] | null;
   outcomePrices?: number[] | null;
   outcomeTokenIds?: string[] | null;
