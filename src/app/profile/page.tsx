@@ -190,15 +190,15 @@ function ProfileHub() {
     >
       <div className="mx-auto max-w-7xl px-4 py-7 space-y-5">
         <section
-          className={`rounded-2xl border p-4 shadow-sm sm:p-5 ${
+          className={`rounded-2xl border p-4 shadow-sm ${
             isDark
               ? 'border-white/10 bg-[linear-gradient(135deg,rgba(0,44,255,0.18),rgba(15,24,44,0.85))]'
               : 'border-slate-200 bg-[linear-gradient(135deg,#eef4ff,#ffffff)]'
           }`}
         >
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex min-w-0 items-center gap-4">
-              <GeneratedProfileAvatar name={user.name} size={72} />
+            <div className="flex min-w-0 items-center gap-3.5">
+              <GeneratedProfileAvatar name={user.name} size={64} />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className={`${pageTitle} tracking-tight`}>Account Hub</h1>
@@ -212,10 +212,6 @@ function ProfileHub() {
                     Active
                   </span>
                 </div>
-                <p className={`${bodyText} mt-1 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                  <span className="font-semibold">{user.name}</span>{' '}
-                  Manage your wallet, saved markets, and trading history.
-                </p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
