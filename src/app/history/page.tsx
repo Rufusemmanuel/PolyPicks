@@ -291,7 +291,11 @@ function TradeHistoryMobileCard({ row }: { row: HistoryRow }) {
   );
 }
 
-export default function HistoryPage() {
+type HistoryContentProps = {
+  embedded?: boolean;
+};
+
+function HistoryContent({ embedded = false }: HistoryContentProps) {
   const { isDark } = useTheme();
   const sessionQuery = useSession();
   const user = sessionQuery.data?.user ?? null;
@@ -510,23 +514,17 @@ export default function HistoryPage() {
     );
   }
 
-  return (
-    <main
-      className={
-        isDark
-          ? 'min-h-screen bg-[#0b1224] text-slate-100'
-          : 'min-h-screen bg-slate-50 text-slate-900'
-      }
-    >
-      <div className="mx-auto max-w-6xl px-4 py-12 space-y-6">
+  const content = (
+    <>
+      <div className={embedded ? 'space-y-6' : 'mx-auto max-w-6xl px-4 py-12 space-y-6'}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-400">
               History
             </p>
-            <h1 className="text-3xl font-semibold">Bookmarked trades</h1>
+            <h1 className="text-3xl font-semibold">Trading history</h1>
             <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-              Track performance across all bookmarks, even removed ones.
+              Review routed trades, bookmarked outcomes, and performance.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -917,6 +915,24 @@ export default function HistoryPage() {
           logoSrc={exportLogoSrc}
         />
       </div>
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <main
+      className={
+        isDark
+          ? 'min-h-screen bg-[#0b1224] text-slate-100'
+          : 'min-h-screen bg-slate-50 text-slate-900'
+      }
+    >
+      {content}
     </main>
   );
+}
+
+export default function HistoryPage() {
+  return <HistoryContent />;
 }

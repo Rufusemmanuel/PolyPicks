@@ -312,7 +312,7 @@ export function Navbar() {
                     }`}
                   >
                     <Link
-                      href="/profile"
+                      href="/profile?tab=overview"
                       className={`block rounded-lg px-3 py-2 transition ${
                         isDark
                           ? 'text-slate-200 hover:bg-slate-800'
@@ -323,7 +323,7 @@ export function Navbar() {
                       Profile
                     </Link>
                     <Link
-                      href="/trade"
+                      href="/profile?tab=bookmarks"
                       className={`block rounded-lg px-3 py-2 transition ${
                         isDark
                           ? 'text-slate-200 hover:bg-slate-800'
@@ -334,7 +334,7 @@ export function Navbar() {
                       Bookmarks
                     </Link>
                     <Link
-                      href="/history"
+                      href="/profile?tab=history"
                       className={`block rounded-lg px-3 py-2 transition ${
                         isDark
                           ? 'text-slate-200 hover:bg-slate-800'
@@ -348,7 +348,7 @@ export function Navbar() {
                       type="button"
                       onClick={() => {
                         setIsMenuOpen(false);
-                        router.push(asRoute('/wallet'));
+                        router.push(asRoute('/profile?tab=wallet'));
                       }}
                       className={`w-full rounded-lg px-3 py-2 text-left transition ${
                         isDark

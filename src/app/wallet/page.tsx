@@ -250,7 +250,15 @@ const fetchPositions = async (address: string): Promise<PositionRow[]> => {
     .filter((row) => row.marketId && row.tokenId && row.balanceBase > 0n);
 };
 
-export default function WalletPage() {
+type WalletPortfolioContentProps = {
+  embedded?: boolean;
+  showSummaryCards?: boolean;
+};
+
+function WalletPortfolioContent({
+  embedded = false,
+  showSummaryCards = true,
+}: WalletPortfolioContentProps) {
   const router = useRouter();
   const { isDark } = useTheme();
   const {
@@ -615,16 +623,11 @@ export default function WalletPage() {
     ],
   );
 
-  return (
-    <main
-      className={
-        isDark
-          ? 'min-h-screen bg-[#0b1224] text-slate-100'
-          : 'min-h-screen bg-slate-50 text-slate-900'
-      }
-    >
-      <div className="mx-auto max-w-6xl px-4 py-10 space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+  const content = (
+    <>
+      <div className={embedded ? 'space-y-6' : 'mx-auto max-w-6xl px-4 py-10 space-y-6'}>
+        {!embedded && (
+          <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className={`${cardLabel} text-blue-400`}>Wallet</p>
             <h1 className={pageTitle}>Portfolio</h1>
@@ -662,9 +665,11 @@ export default function WalletPage() {
               </button>
             )}
           </div>
-        </div>
+          </div>
+        )}
 
-        <div className="grid gap-4 md:grid-cols-3">
+        {showSummaryCards && (
+          <div className="grid gap-4 md:grid-cols-3">
           <div className={`${cardBase} ${cardSurface} p-4`}>
             <p className={`${cardLabel} text-white/50`}>Trading wallet balance</p>
             <p className="mt-2 text-2xl font-semibold">
@@ -692,7 +697,8 @@ export default function WalletPage() {
               Coming soon
             </p>
           </div>
-        </div>
+          </div>
+        )}
 
         <div className={`${cardBase} ${cardSurface} p-5`}>
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1017,6 +1023,24 @@ export default function WalletPage() {
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <main
+      className={
+        isDark
+          ? 'min-h-screen bg-[#0b1224] text-slate-100'
+          : 'min-h-screen bg-slate-50 text-slate-900'
+      }
+    >
+      {content}
     </main>
   );
+}
+
+export default function WalletPage() {
+  return <WalletPortfolioContent />;
 }
