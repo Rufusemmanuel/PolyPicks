@@ -21,6 +21,7 @@ const GAMMA_EVENTS_REVALIDATE_SECONDS = 30;
 const GAMMA_EVENTS_LIMIT = 200;
 const GAMMA_EVENTS_MAX_LIMIT = 500;
 const GAMMA_EVENTS_ORDER_FIELDS = new Set([
+  'id',
   'volume_24hr',
   'volume',
   'liquidity',
@@ -358,10 +359,9 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
   try {
     while (true) {
       const { events: page, fromFallback } = await fetchEventsPage({
-        active: true,
         closed: false,
-        order: 'end_date',
-        ascending: true,
+        order: 'id',
+        ascending: false,
         limit,
         offset,
       });
@@ -400,7 +400,11 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
 
   const mapped = rawMarkets
     .map((m) => {
-      const parsedEndDate = m.endDate ? new Date(m.endDate) : null;
+      const rawEndDate =
+        m.endDate ??
+        (m as RawMarket & { end_date?: string | null }).end_date ??
+        (m as RawMarket & { end_time?: string | null }).end_time;
+      const parsedEndDate = rawEndDate ? new Date(rawEndDate) : null;
       const endDate =
         parsedEndDate && !Number.isNaN(parsedEndDate.getTime())
           ? parsedEndDate
@@ -478,12 +482,10 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
     loggedThumbnailHosts = true;
   }
 
-  const tradable = mapped.filter(isTradableMarket);
-  console.log('[PolyPicks] mapped market count before isTradable filtering:', mapped.length);
-  console.log('[PolyPicks] market count after isTradable filtering:', tradable.length);
+  console.log('[PolyPicks] mapped market count before route filtering:', mapped.length);
 
   const enriched = await Promise.all(
-    tradable.map(async (market) => {
+    mapped.map(async (market) => {
       const tokenId = market.yesTokenId ?? market.noTokenId;
       if (!tokenId) return market;
 
