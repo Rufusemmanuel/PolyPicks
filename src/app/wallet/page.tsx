@@ -287,18 +287,19 @@ function WalletPortfolioContent({
   const [redeemedKeys, setRedeemedKeys] = useState<Set<string>>(() => new Set());
   const [redeemMessages, setRedeemMessages] = useState<Record<string, string>>({});
   const isWalletReady = isConnected && isCorrectNetwork;
-  const tradingWalletAddress =
+  const sessionTradingWalletAddress = polymarketSession.tradingWalletAddress;
+  const displayTradingWalletAddress =
     proxyDeployed === true
       ? proxyAddress
       : proxyDeployed === false
         ? depositWalletAddress
         : null;
-  const isResolvingTradingWallet = isWalletReady && !tradingWalletAddress && !status;
+  const isResolvingTradingWallet = isWalletReady && !displayTradingWalletAddress && !status;
   const shortProxyAddress = proxyAddress
     ? `${proxyAddress.slice(0, 6)}...${proxyAddress.slice(-4)}`
     : null;
-  const shortTradingWalletAddress = tradingWalletAddress
-    ? `${tradingWalletAddress.slice(0, 6)}...${tradingWalletAddress.slice(-4)}`
+  const shortTradingWalletAddress = displayTradingWalletAddress
+    ? `${displayTradingWalletAddress.slice(0, 6)}...${displayTradingWalletAddress.slice(-4)}`
     : null;
   const shortDepositWalletAddress = depositWalletAddress
     ? `${depositWalletAddress.slice(0, 6)}...${depositWalletAddress.slice(-4)}`
@@ -309,7 +310,7 @@ function WalletPortfolioContent({
       ? 'Unavailable'
       : isResolvingTradingWallet
         ? 'Resolving'
-        : tradingWalletAddress
+        : displayTradingWalletAddress
           ? 'Connected'
           : 'Unavailable';
   const buttonSecondary = isDark ? buttonSecondaryDark : buttonSecondaryLight;
@@ -317,6 +318,24 @@ function WalletPortfolioContent({
   const inputBase = isDark ? inputBaseDark : inputBaseLight;
   const modalBase = isDark ? modalBaseDark : modalBaseLight;
   const cardSurface = isDark ? cardSurfaceDark : cardSurfaceLight;
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return;
+    console.info('[wallet_identity_debug]', {
+      connectedEoa: address ?? null,
+      proxyWallet: proxyAddress ?? null,
+      depositWallet: depositWalletAddress ?? null,
+      sessionTradingWalletAddress: sessionTradingWalletAddress ?? null,
+      signatureType: polymarketSession.tradingSignatureType ?? null,
+      positionsQueryAddress: sessionTradingWalletAddress ?? null,
+    });
+  }, [
+    address,
+    depositWalletAddress,
+    polymarketSession.tradingSignatureType,
+    proxyAddress,
+    sessionTradingWalletAddress,
+  ]);
 
   useEffect(() => {
     if (!walletClient || !isConnected || !address || chainId !== 137) {
@@ -394,16 +413,16 @@ function WalletPortfolioContent({
   }, [address, proxyAddress, relayerClient]);
 
   const positionsQuery = useQuery({
-    queryKey: ['wallet-positions', tradingWalletAddress],
-    enabled: Boolean(tradingWalletAddress),
-    queryFn: async () => fetchPositions(tradingWalletAddress!),
+    queryKey: ['wallet-positions', sessionTradingWalletAddress],
+    enabled: Boolean(sessionTradingWalletAddress),
+    queryFn: async () => fetchPositions(sessionTradingWalletAddress!),
   });
   const { collateral } = getContractConfig(polygon.id);
   const usdcBalanceQuery = useQuery({
-    queryKey: ['wallet-usdc-balance', tradingWalletAddress],
-    enabled: Boolean(tradingWalletAddress && publicClient),
+    queryKey: ['wallet-usdc-balance', sessionTradingWalletAddress],
+    enabled: Boolean(sessionTradingWalletAddress && publicClient),
     queryFn: async () => {
-      const walletAddress = tradingWalletAddress;
+      const walletAddress = sessionTradingWalletAddress;
       if (!publicClient || !walletAddress) return 0n;
       return publicClient.readContract({
         abi: erc20Abi,
@@ -559,7 +578,7 @@ function WalletPortfolioContent({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             marketId,
-            proxyWalletAddress: tradingWalletAddress,
+            proxyWalletAddress: sessionTradingWalletAddress,
           }),
         });
         const data = (await res.json()) as {
@@ -618,7 +637,7 @@ function WalletPortfolioContent({
       positionsQuery,
       redeemedKeys,
       redeemingKey,
-      tradingWalletAddress,
+      sessionTradingWalletAddress,
       usdcBalanceQuery,
     ],
   );
@@ -717,13 +736,13 @@ function WalletPortfolioContent({
               {isWalletReady && isResolvingTradingWallet && (
                 <p className="mt-2 text-sm font-semibold">Resolving trading wallet...</p>
               )}
-              {isWalletReady && tradingWalletAddress && (
+              {isWalletReady && displayTradingWalletAddress && (
                 <div className="mt-2 flex items-center gap-2 text-sm font-semibold">
                   <span className="font-mono">{shortTradingWalletAddress}</span>
                   <button
                     type="button"
                     onClick={() =>
-                      navigator.clipboard.writeText(tradingWalletAddress).catch(() => null)
+                      navigator.clipboard.writeText(displayTradingWalletAddress).catch(() => null)
                     }
                     className={`${buttonSecondary} h-7 px-2 text-[10px] font-semibold`}
                     aria-label="Copy trading wallet address"
@@ -797,17 +816,17 @@ function WalletPortfolioContent({
 
         <div className={`${cardBase} ${cardSurface} p-5`}>
           <div className="flex items-center justify-between">
-            <p className={sectionTitle}>Trades</p>
+            <p className={sectionTitle}>Open positions</p>
             <span className="text-xs text-slate-400">
               {positionsQuery.isLoading
                 ? 'Loading...'
-                : `${openPositions.length} trades`}
+                : `${openPositions.length} open positions`}
             </span>
           </div>
           <div className="mt-4 space-y-3">
             {openPositions.length === 0 && !positionsQuery.isLoading && (
               <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-slate-500">
-                No trades yet.
+                No open positions yet.
               </div>
             )}
             {openPositions.map((row) => {
@@ -826,7 +845,7 @@ function WalletPortfolioContent({
               const isRedeemed = redeemedKeys.has(rowKey);
               const isCheckingRedemption = isSettlementState && !marketStatus;
               const canRedeem =
-                Boolean(tradingWalletAddress) &&
+                Boolean(sessionTradingWalletAddress) &&
                 marketStatus?.resolved === true &&
                 row.redeemable === true &&
                 positionWon &&
