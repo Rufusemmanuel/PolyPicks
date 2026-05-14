@@ -5,13 +5,22 @@ import { isTradableMarket } from '@/lib/polymarket/marketStatus';
 import type { MarketSummary } from '@/lib/polymarket/types';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 30;
 
 const MIN_PRICE = 0.75;
 const MAX_PRICE = 0.95;
 const MIN_VOLUME = 1000;
 const LOG_SAMPLE_SIZE = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=30';
+
+function marketsJson<T>(body: T) {
+  return NextResponse.json(body, {
+    headers: {
+      'Cache-Control': CACHE_CONTROL,
+    },
+  });
+}
 
 function getEffectiveDate(m: MarketSummary): Date | null {
   const raw: any =
@@ -114,7 +123,7 @@ export async function GET() {
       const relaxed = baseFilter(markets);
       console.log('[PolyPicks] debugRelax base-filtered length:', relaxed.length);
       console.log('[PolyPicks] debugRelax sample:', relaxed.slice(0, LOG_SAMPLE_SIZE));
-      return NextResponse.json<MarketSummary[]>(relaxed);
+      return marketsJson<MarketSummary[]>(relaxed);
     }
 
     // 0–24h inclusive
@@ -139,7 +148,7 @@ export async function GET() {
     console.log('[PolyPicks] filtered markets 48h length:', window48.length);
     console.log('[PolyPicks] filtered markets 48h sample:', window48.slice(0, LOG_SAMPLE_SIZE));
 
-    return NextResponse.json({ window24, window48 });
+    return marketsJson({ window24, window48 });
   } catch (err) {
     console.error('[PolyPicks] /api/markets error:', err);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });

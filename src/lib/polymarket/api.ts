@@ -14,12 +14,172 @@ import type {
   RawMarket,
 } from './types';
 
-const fetchJson = async <T>(url: string): Promise<T> => {
-  const res = await fetch(url, { next: { revalidate: 0 } });
+type GammaQueryValue = string | number | boolean | null | undefined;
+type GammaQueryParams = Record<string, GammaQueryValue>;
+
+const GAMMA_EVENTS_REVALIDATE_SECONDS = 30;
+const GAMMA_EVENTS_LIMIT = 200;
+const GAMMA_EVENTS_MAX_LIMIT = 500;
+const GAMMA_EVENTS_ORDER_FIELDS = new Set([
+  'volume_24hr',
+  'volume',
+  'liquidity',
+  'start_date',
+  'end_date',
+  'competitive',
+  'closed_time',
+]);
+const GAMMA_EVENTS_BOOLEAN_FILTERS = new Set(['ascending', 'active', 'closed']);
+
+class PolymarketRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly url: string,
+  ) {
+    super(message);
+    this.name = 'PolymarketRequestError';
+  }
+}
+
+const toQueryLog = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    return Array.from(parsed.searchParams.entries());
+  } catch {
+    return [];
+  }
+};
+
+const readResponseBody = async (res: Response) => {
+  try {
+    return await res.text();
+  } catch {
+    return null;
+  }
+};
+
+const fetchJson = async <T>(
+  url: string,
+  options: { revalidate?: number } = {},
+): Promise<T> => {
+  const res = await fetch(url, {
+    next: { revalidate: options.revalidate ?? 0 },
+  });
   if (!res.ok) {
-    throw new Error(`Polymarket request failed (${res.status})`);
+    const responseBody = await readResponseBody(res);
+    console.error('[Polymarket] Gamma request failed', {
+      status: res.status,
+      url,
+      queryParams: toQueryLog(url),
+      responseBody,
+    });
+    throw new PolymarketRequestError(
+      `Polymarket request failed (${res.status})`,
+      res.status,
+      url,
+    );
   }
   return (await res.json()) as T;
+};
+
+const sanitizeGammaParams = (params: GammaQueryParams): GammaQueryParams => {
+  const sanitized: GammaQueryParams = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (value == null) continue;
+    if (typeof value === 'string' && value.trim() === '') continue;
+    sanitized[key] = value;
+  }
+  return sanitized;
+};
+
+const clampEventsLimit = (limit: number) => {
+  if (!Number.isFinite(limit)) return GAMMA_EVENTS_LIMIT;
+  return Math.min(Math.max(Math.trunc(limit), 1), GAMMA_EVENTS_MAX_LIMIT);
+};
+
+const validateEventsParams = (params: GammaQueryParams): GammaQueryParams => {
+  const validated = sanitizeGammaParams(params);
+  validated.limit = clampEventsLimit(Number(validated.limit ?? GAMMA_EVENTS_LIMIT));
+
+  const order = typeof validated.order === 'string' ? validated.order : null;
+  if (!order || !GAMMA_EVENTS_ORDER_FIELDS.has(order)) {
+    delete validated.order;
+    delete validated.ascending;
+  }
+
+  delete validated.resolved;
+
+  if (validated.offset != null) {
+    const offset = Number(validated.offset);
+    validated.offset = Number.isFinite(offset) ? Math.max(Math.trunc(offset), 0) : 0;
+  }
+
+  for (const key of GAMMA_EVENTS_BOOLEAN_FILTERS) {
+    const value = validated[key];
+    if (value == null) continue;
+    if (typeof value === 'boolean') continue;
+    if (value === 'true' || value === 'false') continue;
+    delete validated[key];
+  }
+
+  return validated;
+};
+
+const buildGammaUrl = (path: string, params: GammaQueryParams = {}) => {
+  const url = new URL(path, POLYMARKET_CONFIG.gammaBaseUrl);
+  for (const [key, value] of Object.entries(sanitizeGammaParams(params))) {
+    url.searchParams.set(key, typeof value === 'boolean' ? String(value) : String(value));
+  }
+  return url.toString();
+};
+
+const buildEventsUrl = (params: GammaQueryParams) =>
+  buildGammaUrl('/events', validateEventsParams(params));
+
+const fetchEventsPage = async (
+  params: GammaQueryParams,
+): Promise<{ events: RawEvent[]; fromFallback: boolean }> => {
+  const url = buildEventsUrl(params);
+  try {
+    return {
+      events: await fetchJson<RawEvent[]>(url, {
+        revalidate: GAMMA_EVENTS_REVALIDATE_SECONDS,
+      }),
+      fromFallback: false,
+    };
+  } catch (error) {
+    if (!(error instanceof PolymarketRequestError) || error.status !== 422) {
+      throw error;
+    }
+
+    const fallbackUrl = buildEventsUrl({ limit: params.limit ?? GAMMA_EVENTS_LIMIT });
+    console.error('[Polymarket] Gamma events 422; retrying with minimal params', {
+      url,
+      fallbackUrl,
+    });
+
+    try {
+      return {
+        events: await fetchJson<RawEvent[]>(fallbackUrl, {
+          revalidate: GAMMA_EVENTS_REVALIDATE_SECONDS,
+        }),
+        fromFallback: true,
+      };
+    } catch (fallbackError) {
+      if (
+        fallbackError instanceof PolymarketRequestError &&
+        fallbackError.status === 422
+      ) {
+        console.error('[Polymarket] Gamma events fallback returned 422; using empty list', {
+          url,
+          fallbackUrl,
+        });
+        return { events: [], fromFallback: true };
+      }
+      throw fallbackError;
+    }
+  }
 };
 
 const CONDITION_ID_RE = /^0x[0-9a-fA-F]{64}$/;
@@ -185,21 +345,35 @@ const collectTagLabels = (market: RawMarket): string[] => {
 };
 
 export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
-  const limit = 200;
+  const limit = GAMMA_EVENTS_LIMIT;
   let offset = 0;
   const allEvents: RawEvent[] = [];
 
-  while (true) {
-    const pageUrl =
-      `${POLYMARKET_CONFIG.gammaBaseUrl}/events?` +
-      `closed=false&order=id&ascending=false&limit=${limit}&offset=${offset}`;
+  try {
+    while (true) {
+      const { events: page, fromFallback } = await fetchEventsPage({
+        closed: false,
+        order: 'end_date',
+        ascending: true,
+        limit,
+        offset,
+      });
 
-    const page = await fetchJson<RawEvent[]>(pageUrl);
+      if (fromFallback && offset > 0) break;
+      if (!page.length) break;
 
-    if (!page.length) break;
-
-    allEvents.push(...page);
-    offset += limit;
+      allEvents.push(...page);
+      if (fromFallback || page.length < limit) break;
+      offset += limit;
+    }
+  } catch (error) {
+    if (error instanceof PolymarketRequestError && error.status === 422) {
+      console.error('[Polymarket] Gamma events returned 422; using empty list', {
+        url: error.url,
+      });
+      return [];
+    }
+    throw error;
   }
 
   const rawMarkets: RawMarket[] = [];
@@ -284,8 +458,10 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
     loggedThumbnailHosts = true;
   }
 
+  const tradable = mapped.filter(isTradableMarket);
+
   const enriched = await Promise.all(
-    mapped.map(async (market) => {
+    tradable.map(async (market) => {
       const tokenId = market.yesTokenId ?? market.noTokenId;
       if (!tokenId) return market;
 
