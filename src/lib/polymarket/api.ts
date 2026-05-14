@@ -153,7 +153,13 @@ const fetchEventsPage = async (
       throw error;
     }
 
-    const fallbackUrl = buildEventsUrl({ limit: params.limit ?? GAMMA_EVENTS_LIMIT });
+    const fallbackUrl = buildEventsUrl({
+      limit: 100,
+      active: true,
+      closed: false,
+      order: 'end_date',
+      ascending: true,
+    });
     console.error('[Polymarket] Gamma events 422; retrying with minimal params', {
       url,
       fallbackUrl,
@@ -352,6 +358,7 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
   try {
     while (true) {
       const { events: page, fromFallback } = await fetchEventsPage({
+        active: true,
         closed: false,
         order: 'end_date',
         ascending: true,
@@ -388,10 +395,16 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
     }
   }
 
+  console.log('[PolyPicks] Gamma events raw fetched count:', allEvents.length);
+  console.log('[PolyPicks] Gamma raw market count before filtering:', rawMarkets.length);
+
   const mapped = rawMarkets
     .map((m) => {
-      const endDate = new Date(m.endDate);
-      if (Number.isNaN(endDate.getTime())) return null;
+      const parsedEndDate = m.endDate ? new Date(m.endDate) : null;
+      const endDate =
+        parsedEndDate && !Number.isNaN(parsedEndDate.getTime())
+          ? parsedEndDate
+          : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
       const closedTime = m.closedTime ? new Date(m.closedTime) : undefined;
 
@@ -404,6 +417,13 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
       const parsedPrice = resolveLeadingPrice(outcomeData, fallbackBestBid);
       if (!parsedPrice) return null;
       const outcomeResolution = resolveMarketOutcome(m, outcomeData);
+      const explicitlyResolved = Boolean(
+        m.resolved ||
+          normalizeOutcomeLabel(m.winningOutcome) ||
+          normalizeOutcomeLabel(m.winningOutcomeId) ||
+          normalizeOutcomeLabel(m.resolution) ||
+          normalizeOutcomeLabel(m.outcome),
+      );
 
       // Use event slug when available (grouped markets), otherwise fall back to market slug.
       const eventSlug = m.events?.[0]?.slug ?? m.slug;
@@ -430,7 +450,7 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
         outcomes: outcomeData.labels.length ? outcomeData.labels : null,
         outcomePrices: outcomeData.prices.length ? outcomeData.prices : null,
         outcomeTokenIds: outcomeData.tokenIds.length ? outcomeData.tokenIds : null,
-        resolved: outcomeResolution.resolved,
+        resolved: explicitlyResolved,
         winningOutcome: outcomeResolution.winningOutcome ?? null,
         winningOutcomeId: outcomeResolution.winningOutcomeId ?? null,
         price: parsedPrice,
@@ -459,6 +479,8 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
   }
 
   const tradable = mapped.filter(isTradableMarket);
+  console.log('[PolyPicks] mapped market count before isTradable filtering:', mapped.length);
+  console.log('[PolyPicks] market count after isTradable filtering:', tradable.length);
 
   const enriched = await Promise.all(
     tradable.map(async (market) => {

@@ -7,11 +7,9 @@ import type { MarketSummary } from '@/lib/polymarket/types';
 export const dynamic = 'force-dynamic';
 export const revalidate = 30;
 
-const MIN_PRICE = 0.75;
-const MAX_PRICE = 0.95;
-const MIN_VOLUME = 1000;
 const LOG_SAMPLE_SIZE = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const FALLBACK_MARKET_COUNT = 50;
 const CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=30';
 
 function marketsJson<T>(body: T) {
@@ -56,18 +54,6 @@ function logMarketFilterError(m: MarketSummary | null | undefined, error: unknow
 function safeBaseFilterMarket(m: MarketSummary): boolean {
   try {
     if (!isTradableMarket(m)) return false;
-
-    // price sanity
-    const p = m.price?.price;
-    if (typeof p !== 'number' || p < MIN_PRICE || p > MAX_PRICE) return false;
-
-    // volume filter
-    if (typeof m.volume === 'number' && m.volume < MIN_VOLUME) return false;
-
-    // must have valid effective date
-    const eff = getEffectiveDate(m);
-    if (!eff) return false;
-
     return true;
   } catch (error) {
     logMarketFilterError(m, error);
@@ -115,8 +101,8 @@ export async function GET() {
     const now = Date.now();
 
     console.log('[PolyPicks] debugRelax:', debugRelax);
-    console.log('[PolyPicks] raw markets length:', markets.length);
-    console.log('[PolyPicks] raw markets sample:', markets.slice(0, LOG_SAMPLE_SIZE));
+    console.log('[PolyPicks] /api/markets fetched tradable markets count:', markets.length);
+    console.log('[PolyPicks] /api/markets fetched tradable sample:', markets.slice(0, LOG_SAMPLE_SIZE));
 
     if (debugRelax) {
       // Base filters only; no time windows
@@ -142,13 +128,24 @@ export async function GET() {
 
     // >24h–48h inclusive
     const window48 = filterByWindow(markets, DAY_MS, 2 * DAY_MS, now);
+    const fallbackMarkets =
+      window24.length === 0 && window48.length === 0
+        ? baseFilter(markets).slice(0, FALLBACK_MARKET_COUNT)
+        : [];
+    const finalWindow24 = fallbackMarkets.length ? fallbackMarkets : window24;
+    const finalWindow48 = window48;
 
     console.log('[PolyPicks] filtered markets 24h length:', window24.length);
     console.log('[PolyPicks] filtered markets 24h sample:', window24.slice(0, LOG_SAMPLE_SIZE));
     console.log('[PolyPicks] filtered markets 48h length:', window48.length);
     console.log('[PolyPicks] filtered markets 48h sample:', window48.slice(0, LOG_SAMPLE_SIZE));
+    console.log('[PolyPicks] fallback markets length:', fallbackMarkets.length);
+    console.log('[PolyPicks] final window24/window48 counts:', {
+      window24: finalWindow24.length,
+      window48: finalWindow48.length,
+    });
 
-    return marketsJson({ window24, window48 });
+    return marketsJson({ window24: finalWindow24, window48: finalWindow48 });
   } catch (err) {
     console.error('[PolyPicks] /api/markets error:', err);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
