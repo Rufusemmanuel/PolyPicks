@@ -25,8 +25,27 @@ function getEffectiveDate(m: MarketSummary): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function baseFilter(markets: MarketSummary[]): MarketSummary[] {
-  return markets.filter((m) => {
+function readMarketLogField(
+  m: MarketSummary | null | undefined,
+  key: 'id' | 'slug',
+) {
+  try {
+    return m?.[key];
+  } catch {
+    return undefined;
+  }
+}
+
+function logMarketFilterError(m: MarketSummary | null | undefined, error: unknown) {
+  console.error('[markets_filter_error]', {
+    marketId: readMarketLogField(m, 'id'),
+    slug: readMarketLogField(m, 'slug'),
+    error,
+  });
+}
+
+function safeBaseFilterMarket(m: MarketSummary): boolean {
+  try {
     if (!isTradableMarket(m)) return false;
 
     // price sanity
@@ -41,7 +60,14 @@ function baseFilter(markets: MarketSummary[]): MarketSummary[] {
     if (!eff) return false;
 
     return true;
-  });
+  } catch (error) {
+    logMarketFilterError(m, error);
+    return false;
+  }
+}
+
+function baseFilter(markets: MarketSummary[]): MarketSummary[] {
+  return markets.filter(safeBaseFilterMarket);
 }
 
 function filterByWindow(
@@ -51,8 +77,14 @@ function filterByWindow(
   now: number,
 ): MarketSummary[] {
   return baseFilter(markets).filter((m) => {
-    const eff = getEffectiveDate(m);
-    if (!eff) return false;
+    let eff: Date | null = null;
+    try {
+      eff = getEffectiveDate(m);
+      if (!eff) return false;
+    } catch (error) {
+      logMarketFilterError(m, error);
+      return false;
+    }
 
     const deltaMs = eff.getTime() - now;
     if (deltaMs < 0) return false;
@@ -87,8 +119,14 @@ export async function GET() {
 
     // 0–24h inclusive
     const window24 = baseFilter(markets).filter((m) => {
-      const eff = getEffectiveDate(m);
-      if (!eff) return false;
+      let eff: Date | null = null;
+      try {
+        eff = getEffectiveDate(m);
+        if (!eff) return false;
+      } catch (error) {
+        logMarketFilterError(m, error);
+        return false;
+      }
       const deltaMs = eff.getTime() - now;
       return deltaMs >= 0 && deltaMs <= DAY_MS;
     });
