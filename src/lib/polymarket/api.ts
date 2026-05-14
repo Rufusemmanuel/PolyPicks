@@ -19,8 +19,9 @@ type GammaQueryParams = Record<string, GammaQueryValue>;
 
 const GAMMA_EVENTS_REVALIDATE_SECONDS = 30;
 const GAMMA_REQUEST_TIMEOUT_MS = 9000;
-const GAMMA_EVENTS_LIMIT = 200;
+const GAMMA_EVENTS_LIMIT = 100;
 const GAMMA_EVENTS_MAX_LIMIT = 500;
+const DEFAULT_GAMMA_EVENTS_MAX_PAGES = 20;
 const GAMMA_EVENTS_ORDER_FIELDS = new Set([
   'id',
   'volume_24hr',
@@ -60,6 +61,11 @@ const readResponseBody = async (res: Response) => {
     return null;
   }
 };
+
+const isAbortError = (error: unknown) =>
+  error instanceof DOMException
+    ? error.name === 'AbortError'
+    : error instanceof Error && error.name === 'AbortError';
 
 const fetchJson = async <T>(
   url: string,
@@ -159,14 +165,15 @@ const buildEventsUrl = (params: GammaQueryParams) =>
 
 const fetchEventsPage = async (
   params: GammaQueryParams,
-): Promise<{ events: RawEvent[]; fromFallback: boolean }> => {
+): Promise<{ events: RawEvent[]; failed: boolean; timedOut: boolean }> => {
   const url = buildEventsUrl(params);
   try {
     return {
       events: await fetchJson<RawEvent[]>(url, {
         revalidate: GAMMA_EVENTS_REVALIDATE_SECONDS,
       }),
-      fromFallback: false,
+      failed: false,
+      timedOut: false,
     };
   } catch (error) {
     if (!(error instanceof PolymarketRequestError) || error.status !== 422) {
@@ -174,11 +181,12 @@ const fetchEventsPage = async (
         url,
         error,
       });
-      return { events: [], fromFallback: false };
+      return { events: [], failed: true, timedOut: isAbortError(error) };
     }
 
     const fallbackUrl = buildEventsUrl({
-      limit: 100,
+      limit: params.limit ?? GAMMA_EVENTS_LIMIT,
+      offset: params.offset,
       active: true,
       closed: false,
       order: 'end_date',
@@ -194,7 +202,8 @@ const fetchEventsPage = async (
         events: await fetchJson<RawEvent[]>(fallbackUrl, {
           revalidate: GAMMA_EVENTS_REVALIDATE_SECONDS,
         }),
-        fromFallback: true,
+        failed: false,
+        timedOut: false,
       };
     } catch (fallbackError) {
       console.error('[Polymarket] Gamma events fallback failed; using empty page', {
@@ -202,7 +211,7 @@ const fetchEventsPage = async (
         fallbackUrl,
         error: fallbackError,
       });
-      return { events: [], fromFallback: true };
+      return { events: [], failed: true, timedOut: isAbortError(fallbackError) };
     }
   }
 };
@@ -369,26 +378,43 @@ const collectTagLabels = (market: RawMarket): string[] => {
   return labels;
 };
 
+const getGammaEventsMaxPages = () => {
+  const parsed = Number(process.env.POLYPICKS_GAMMA_EVENTS_MAX_PAGES);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_GAMMA_EVENTS_MAX_PAGES;
+  return Math.trunc(parsed);
+};
+
 export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
   const limit = GAMMA_EVENTS_LIMIT;
   let offset = 0;
+  let pageCount = 0;
+  const maxPages = getGammaEventsMaxPages();
   const allEvents: RawEvent[] = [];
 
   try {
-    while (true) {
-      const { events: page, fromFallback } = await fetchEventsPage({
+    while (pageCount < maxPages) {
+      const { events: page, failed, timedOut } = await fetchEventsPage({
         closed: false,
         order: 'id',
         ascending: false,
         limit,
         offset,
       });
+      pageCount += 1;
 
-      if (fromFallback && offset > 0) break;
-      if (!page.length) break;
+      console.log('[PolyPicks] Gamma events page fetched', {
+        offset,
+        limit,
+        count: page.length,
+        failed,
+        timedOut,
+      });
+
+      if (timedOut) break;
+      if (!failed && !page.length) break;
 
       allEvents.push(...page);
-      if (fromFallback || page.length < limit) break;
+      if (!failed && page.length < limit) break;
       offset += limit;
     }
   } catch (error) {
@@ -399,6 +425,13 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
       return [];
     }
     throw error;
+  }
+
+  if (pageCount >= maxPages) {
+    console.log('[PolyPicks] Gamma events pagination stopped at max pages', {
+      maxPages,
+      totalEvents: allEvents.length,
+    });
   }
 
   const rawMarkets: RawMarket[] = [];
