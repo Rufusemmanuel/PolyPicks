@@ -37,7 +37,7 @@ const fetchJson = async <T>(url: string): Promise<T> => {
 };
 
 const CONDITION_ID_RE = /^0x[0-9a-fA-F]{64}$/;
-const MAX_EVENT_PAGES = 20;
+const MAX_CONSECUTIVE_FAILED_EVENT_PAGES = 3;
 
 type ParsedOutcomes = {
   labels: string[];
@@ -202,24 +202,32 @@ const collectTagLabels = (market: RawMarket): string[] => {
 export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
   const limit = 200;
   let offset = 0;
-  let pageCount = 0;
+  let pagesFetched = 0;
+  let consecutiveFailedPages = 0;
   const allEvents: RawEvent[] = [];
 
-  while (pageCount < MAX_EVENT_PAGES) {
+  while (true) {
     const pageUrl =
       `${POLYMARKET_CONFIG.gammaBaseUrl}/events?` +
       `closed=false&order=id&ascending=false&limit=${limit}&offset=${offset}`;
-    pageCount += 1;
 
-    let page: RawEvent[] = [];
+    pagesFetched += 1;
+
+    let page: RawEvent[];
     try {
       page = await fetchJson<RawEvent[]>(pageUrl);
+      consecutiveFailedPages = 0;
     } catch (error) {
+      consecutiveFailedPages += 1;
       console.error('[PolyPicks] Gamma events page skipped', {
         offset,
         url: pageUrl,
+        consecutiveFailedPages,
         error,
       });
+      if (consecutiveFailedPages >= MAX_CONSECUTIVE_FAILED_EVENT_PAGES) {
+        break;
+      }
       offset += limit;
       continue;
     }
@@ -241,6 +249,12 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
       });
     }
   }
+
+  console.log('[PolyPicks] market discovery fetch counts:', {
+    pagesFetched,
+    rawEventsFetched: allEvents.length,
+    rawMarketsExtracted: rawMarkets.length,
+  });
 
   const mapped = rawMarkets
     .map((m) => {
