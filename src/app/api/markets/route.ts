@@ -9,52 +9,39 @@ export const revalidate = 0;
 
 const MIN_PRICE = 0.75;
 const MAX_PRICE = 0.95;
+const MIN_VOLUME = 1000;
 const LOG_SAMPLE_SIZE = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function getEffectiveDate(m: MarketSummary): Date | null {
-  const raw =
-    (m as MarketSummary & { upperBoundDate?: string | Date | null }).upperBoundDate ??
-    (m as MarketSummary & { gameStartTime?: string | Date | null }).gameStartTime ??
+  const raw: any =
+    (m as any).upperBoundDate ??
+    (m as any).gameStartTime ??
     m.endDate;
 
   if (!raw) return null;
 
-  try {
-    const d = raw instanceof Date ? raw : new Date(raw);
-    return Number.isNaN(d.getTime()) ? null : d;
-  } catch {
-    return null;
-  }
+  const d = raw instanceof Date ? raw : new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function logMarketFilterError(m: MarketSummary | null | undefined, error: unknown) {
-  console.error('[markets_filter_error]', {
-    marketId: m?.id,
-    slug: m?.slug,
-    error,
-  });
-}
-
-function passesClosedFilter(m: MarketSummary, now: number): boolean {
-  try {
+function baseFilter(markets: MarketSummary[]): MarketSummary[] {
+  return markets.filter((m) => {
     if (!isTradableMarket(m)) return false;
-    if (m.closedTime && m.closedTime.getTime() < now) return false;
-    return true;
-  } catch (error) {
-    logMarketFilterError(m, error);
-    return false;
-  }
-}
 
-function passesPriceFilter(m: MarketSummary): boolean {
-  try {
+    // price sanity
     const p = m.price?.price;
-    return typeof p === 'number' && p >= MIN_PRICE && p <= MAX_PRICE;
-  } catch (error) {
-    logMarketFilterError(m, error);
-    return false;
-  }
+    if (typeof p !== 'number' || p < MIN_PRICE || p > MAX_PRICE) return false;
+
+    // volume filter
+    if (typeof m.volume === 'number' && m.volume < MIN_VOLUME) return false;
+
+    // must have valid effective date
+    const eff = getEffectiveDate(m);
+    if (!eff) return false;
+
+    return true;
+  });
 }
 
 function filterByWindow(
@@ -63,22 +50,18 @@ function filterByWindow(
   maxWindowMs: number,
   now: number,
 ): MarketSummary[] {
-  return markets.filter((m) => {
-    try {
-      const eff = getEffectiveDate(m);
-      if (!eff) return false;
+  return baseFilter(markets).filter((m) => {
+    const eff = getEffectiveDate(m);
+    if (!eff) return false;
 
-      const deltaMs = eff.getTime() - now;
-      if (deltaMs < 0) return false;
+    const deltaMs = eff.getTime() - now;
+    if (deltaMs < 0) return false;
 
-      if (deltaMs <= minWindowMs) return false;
-      if (deltaMs > maxWindowMs) return false;
+    // minWindowMs exclusive, maxWindowMs inclusive
+    if (deltaMs <= minWindowMs) return false;
+    if (deltaMs > maxWindowMs) return false;
 
-      return true;
-    } catch (error) {
-      logMarketFilterError(m, error);
-      return false;
-    }
+    return true;
   });
 }
 
@@ -90,27 +73,33 @@ export async function GET() {
     const markets = await getActiveMarkets();
     const now = Date.now();
 
-    const afterClosedFilter = markets.filter((m) => passesClosedFilter(m, now));
-    const afterPriceFilter = afterClosedFilter.filter(passesPriceFilter);
-
     console.log('[PolyPicks] debugRelax:', debugRelax);
-    console.log('[PolyPicks] raw markets fetched:', markets.length);
+    console.log('[PolyPicks] raw markets length:', markets.length);
     console.log('[PolyPicks] raw markets sample:', markets.slice(0, LOG_SAMPLE_SIZE));
-    console.log('[PolyPicks] after closed filter:', afterClosedFilter.length);
-    console.log('[PolyPicks] after price filter 0.75-0.95:', afterPriceFilter.length);
 
     if (debugRelax) {
-      console.log('[PolyPicks] debugRelax sample:', afterPriceFilter.slice(0, LOG_SAMPLE_SIZE));
-      return NextResponse.json<MarketSummary[]>(afterPriceFilter);
+      // Base filters only; no time windows
+      const relaxed = baseFilter(markets);
+      console.log('[PolyPicks] debugRelax base-filtered length:', relaxed.length);
+      console.log('[PolyPicks] debugRelax sample:', relaxed.slice(0, LOG_SAMPLE_SIZE));
+      return NextResponse.json<MarketSummary[]>(relaxed);
     }
 
-    const window24 = filterByWindow(afterPriceFilter, -1, DAY_MS, now);
-    const window48 = filterByWindow(afterPriceFilter, DAY_MS, 2 * DAY_MS, now);
+    // 0–24h inclusive
+    const window24 = baseFilter(markets).filter((m) => {
+      const eff = getEffectiveDate(m);
+      if (!eff) return false;
+      const deltaMs = eff.getTime() - now;
+      return deltaMs >= 0 && deltaMs <= DAY_MS;
+    });
 
-    console.log('[PolyPicks] window24 count:', window24.length);
-    console.log('[PolyPicks] window24 sample:', window24.slice(0, LOG_SAMPLE_SIZE));
-    console.log('[PolyPicks] window48 count:', window48.length);
-    console.log('[PolyPicks] window48 sample:', window48.slice(0, LOG_SAMPLE_SIZE));
+    // >24h–48h inclusive
+    const window48 = filterByWindow(markets, DAY_MS, 2 * DAY_MS, now);
+
+    console.log('[PolyPicks] filtered markets 24h length:', window24.length);
+    console.log('[PolyPicks] filtered markets 24h sample:', window24.slice(0, LOG_SAMPLE_SIZE));
+    console.log('[PolyPicks] filtered markets 48h length:', window48.length);
+    console.log('[PolyPicks] filtered markets 48h sample:', window48.slice(0, LOG_SAMPLE_SIZE));
 
     return NextResponse.json({ window24, window48 });
   } catch (err) {

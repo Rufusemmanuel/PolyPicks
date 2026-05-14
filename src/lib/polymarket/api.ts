@@ -14,209 +14,30 @@ import type {
   RawMarket,
 } from './types';
 
-type GammaQueryValue = string | number | boolean | null | undefined;
-type GammaQueryParams = Record<string, GammaQueryValue>;
-
-const GAMMA_EVENTS_REVALIDATE_SECONDS = 30;
-const GAMMA_REQUEST_TIMEOUT_MS = 9000;
-const GAMMA_EVENTS_LIMIT = 100;
-const GAMMA_EVENTS_MAX_LIMIT = 500;
-const DEFAULT_GAMMA_EVENTS_MAX_PAGES = 20;
-const GAMMA_EVENTS_ORDER_FIELDS = new Set([
-  'id',
-  'volume_24hr',
-  'volume',
-  'liquidity',
-  'start_date',
-  'end_date',
-  'competitive',
-  'closed_time',
-]);
-const GAMMA_EVENTS_BOOLEAN_FILTERS = new Set(['ascending', 'active', 'closed']);
-
-class PolymarketRequestError extends Error {
-  constructor(
-    message: string,
-    public readonly status: number,
-    public readonly url: string,
-  ) {
-    super(message);
-    this.name = 'PolymarketRequestError';
-  }
-}
-
-const toQueryLog = (url: string) => {
-  try {
-    const parsed = new URL(url);
-    return Array.from(parsed.searchParams.entries());
-  } catch {
-    return [];
-  }
-};
-
-const readResponseBody = async (res: Response) => {
-  try {
-    return await res.text();
-  } catch {
-    return null;
-  }
-};
-
-const isAbortError = (error: unknown) =>
-  error instanceof DOMException
-    ? error.name === 'AbortError'
-    : error instanceof Error && error.name === 'AbortError';
-
-const fetchJson = async <T>(
-  url: string,
-  options: { revalidate?: number } = {},
-): Promise<T> => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), GAMMA_REQUEST_TIMEOUT_MS);
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      next: { revalidate: options.revalidate ?? 0 },
-      signal: controller.signal,
-    });
-  } catch (error) {
-    console.error('[Polymarket] Gamma request failed', {
-      status: null,
-      url,
-      queryParams: toQueryLog(url),
-      responseBody: null,
-      error,
-    });
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
-
+const fetchJson = async <T>(url: string): Promise<T> => {
+  const res = await fetch(url, { next: { revalidate: 0 } });
   if (!res.ok) {
-    const responseBody = await readResponseBody(res);
+    let responseBody: string | null = null;
+    try {
+      responseBody = await res.text();
+    } catch {
+      responseBody = null;
+    }
     console.error('[Polymarket] Gamma request failed', {
       status: res.status,
       url,
-      queryParams: toQueryLog(url),
       responseBody,
     });
-    throw new PolymarketRequestError(
-      `Polymarket request failed (${res.status})`,
-      res.status,
-      url,
-    );
+    const error = new Error(`Polymarket request failed (${res.status})`);
+    (error as Error & { status?: number; url?: string }).status = res.status;
+    (error as Error & { status?: number; url?: string }).url = url;
+    throw error;
   }
   return (await res.json()) as T;
 };
 
-const sanitizeGammaParams = (params: GammaQueryParams): GammaQueryParams => {
-  const sanitized: GammaQueryParams = {};
-  for (const [key, value] of Object.entries(params)) {
-    if (value == null) continue;
-    if (typeof value === 'string' && value.trim() === '') continue;
-    sanitized[key] = value;
-  }
-  return sanitized;
-};
-
-const clampEventsLimit = (limit: number) => {
-  if (!Number.isFinite(limit)) return GAMMA_EVENTS_LIMIT;
-  return Math.min(Math.max(Math.trunc(limit), 1), GAMMA_EVENTS_MAX_LIMIT);
-};
-
-const validateEventsParams = (params: GammaQueryParams): GammaQueryParams => {
-  const validated = sanitizeGammaParams(params);
-  validated.limit = clampEventsLimit(Number(validated.limit ?? GAMMA_EVENTS_LIMIT));
-
-  const order = typeof validated.order === 'string' ? validated.order : null;
-  if (!order || !GAMMA_EVENTS_ORDER_FIELDS.has(order)) {
-    delete validated.order;
-    delete validated.ascending;
-  }
-
-  delete validated.resolved;
-
-  if (validated.offset != null) {
-    const offset = Number(validated.offset);
-    validated.offset = Number.isFinite(offset) ? Math.max(Math.trunc(offset), 0) : 0;
-  }
-
-  for (const key of GAMMA_EVENTS_BOOLEAN_FILTERS) {
-    const value = validated[key];
-    if (value == null) continue;
-    if (typeof value === 'boolean') continue;
-    if (value === 'true' || value === 'false') continue;
-    delete validated[key];
-  }
-
-  return validated;
-};
-
-const buildGammaUrl = (path: string, params: GammaQueryParams = {}) => {
-  const url = new URL(path, POLYMARKET_CONFIG.gammaBaseUrl);
-  for (const [key, value] of Object.entries(sanitizeGammaParams(params))) {
-    url.searchParams.set(key, typeof value === 'boolean' ? String(value) : String(value));
-  }
-  return url.toString();
-};
-
-const buildEventsUrl = (params: GammaQueryParams) =>
-  buildGammaUrl('/events', validateEventsParams(params));
-
-const fetchEventsPage = async (
-  params: GammaQueryParams,
-): Promise<{ events: RawEvent[]; failed: boolean; timedOut: boolean }> => {
-  const url = buildEventsUrl(params);
-  try {
-    return {
-      events: await fetchJson<RawEvent[]>(url, {
-        revalidate: GAMMA_EVENTS_REVALIDATE_SECONDS,
-      }),
-      failed: false,
-      timedOut: false,
-    };
-  } catch (error) {
-    if (!(error instanceof PolymarketRequestError) || error.status !== 422) {
-      console.error('[Polymarket] Gamma events page failed; using empty page', {
-        url,
-        error,
-      });
-      return { events: [], failed: true, timedOut: isAbortError(error) };
-    }
-
-    const fallbackUrl = buildEventsUrl({
-      limit: params.limit ?? GAMMA_EVENTS_LIMIT,
-      offset: params.offset,
-      active: true,
-      closed: false,
-      order: 'end_date',
-      ascending: true,
-    });
-    console.error('[Polymarket] Gamma events 422; retrying with minimal params', {
-      url,
-      fallbackUrl,
-    });
-
-    try {
-      return {
-        events: await fetchJson<RawEvent[]>(fallbackUrl, {
-          revalidate: GAMMA_EVENTS_REVALIDATE_SECONDS,
-        }),
-        failed: false,
-        timedOut: false,
-      };
-    } catch (fallbackError) {
-      console.error('[Polymarket] Gamma events fallback failed; using empty page', {
-        url,
-        fallbackUrl,
-        error: fallbackError,
-      });
-      return { events: [], failed: true, timedOut: isAbortError(fallbackError) };
-    }
-  }
-};
-
 const CONDITION_ID_RE = /^0x[0-9a-fA-F]{64}$/;
+const MAX_EVENT_PAGES = 20;
 
 type ParsedOutcomes = {
   labels: string[];
@@ -378,60 +199,35 @@ const collectTagLabels = (market: RawMarket): string[] => {
   return labels;
 };
 
-const getGammaEventsMaxPages = () => {
-  const parsed = Number(process.env.POLYPICKS_GAMMA_EVENTS_MAX_PAGES);
-  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_GAMMA_EVENTS_MAX_PAGES;
-  return Math.trunc(parsed);
-};
-
 export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
-  const limit = GAMMA_EVENTS_LIMIT;
+  const limit = 200;
   let offset = 0;
   let pageCount = 0;
-  const maxPages = getGammaEventsMaxPages();
   const allEvents: RawEvent[] = [];
 
-  try {
-    while (pageCount < maxPages) {
-      const { events: page, failed, timedOut } = await fetchEventsPage({
-        closed: false,
-        order: 'id',
-        ascending: false,
-        limit,
+  while (pageCount < MAX_EVENT_PAGES) {
+    const pageUrl =
+      `${POLYMARKET_CONFIG.gammaBaseUrl}/events?` +
+      `closed=false&order=id&ascending=false&limit=${limit}&offset=${offset}`;
+    pageCount += 1;
+
+    let page: RawEvent[] = [];
+    try {
+      page = await fetchJson<RawEvent[]>(pageUrl);
+    } catch (error) {
+      console.error('[PolyPicks] Gamma events page skipped', {
         offset,
+        url: pageUrl,
+        error,
       });
-      pageCount += 1;
-
-      console.log('[PolyPicks] Gamma events page fetched', {
-        offset,
-        limit,
-        count: page.length,
-        failed,
-        timedOut,
-      });
-
-      if (timedOut) break;
-      if (!failed && !page.length) break;
-
-      allEvents.push(...page);
-      if (!failed && page.length < limit) break;
       offset += limit;
+      continue;
     }
-  } catch (error) {
-    if (error instanceof PolymarketRequestError && error.status === 422) {
-      console.error('[Polymarket] Gamma events returned 422; using empty list', {
-        url: error.url,
-      });
-      return [];
-    }
-    throw error;
-  }
 
-  if (pageCount >= maxPages) {
-    console.log('[PolyPicks] Gamma events pagination stopped at max pages', {
-      maxPages,
-      totalEvents: allEvents.length,
-    });
+    if (!page.length) break;
+
+    allEvents.push(...page);
+    offset += limit;
   }
 
   const rawMarkets: RawMarket[] = [];
@@ -446,20 +242,10 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
     }
   }
 
-  console.log('[PolyPicks] Gamma events raw fetched count:', allEvents.length);
-  console.log('[PolyPicks] Gamma raw market count before filtering:', rawMarkets.length);
-
   const mapped = rawMarkets
     .map((m) => {
-      const rawEndDate =
-        m.endDate ??
-        (m as RawMarket & { end_date?: string | null }).end_date ??
-        (m as RawMarket & { end_time?: string | null }).end_time;
-      const parsedEndDate = rawEndDate ? new Date(rawEndDate) : null;
-      const endDate =
-        parsedEndDate && !Number.isNaN(parsedEndDate.getTime())
-          ? parsedEndDate
-          : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+      const endDate = new Date(m.endDate);
+      if (Number.isNaN(endDate.getTime())) return null;
 
       const closedTime = m.closedTime ? new Date(m.closedTime) : undefined;
 
@@ -472,13 +258,6 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
       const parsedPrice = resolveLeadingPrice(outcomeData, fallbackBestBid);
       if (!parsedPrice) return null;
       const outcomeResolution = resolveMarketOutcome(m, outcomeData);
-      const explicitlyResolved = Boolean(
-        m.resolved ||
-          normalizeOutcomeLabel(m.winningOutcome) ||
-          normalizeOutcomeLabel(m.winningOutcomeId) ||
-          normalizeOutcomeLabel(m.resolution) ||
-          normalizeOutcomeLabel(m.outcome),
-      );
 
       // Use event slug when available (grouped markets), otherwise fall back to market slug.
       const eventSlug = m.events?.[0]?.slug ?? m.slug;
@@ -505,7 +284,7 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
         outcomes: outcomeData.labels.length ? outcomeData.labels : null,
         outcomePrices: outcomeData.prices.length ? outcomeData.prices : null,
         outcomeTokenIds: outcomeData.tokenIds.length ? outcomeData.tokenIds : null,
-        resolved: explicitlyResolved,
+        resolved: outcomeResolution.resolved,
         winningOutcome: outcomeResolution.winningOutcome ?? null,
         winningOutcomeId: outcomeResolution.winningOutcomeId ?? null,
         price: parsedPrice,
@@ -532,8 +311,6 @@ export const getActiveMarkets = async (): Promise<MarketSummary[]> => {
     }
     loggedThumbnailHosts = true;
   }
-
-  console.log('[PolyPicks] mapped market count before route filtering:', mapped.length);
 
   const enriched = await Promise.all(
     mapped.map(async (market) => {
