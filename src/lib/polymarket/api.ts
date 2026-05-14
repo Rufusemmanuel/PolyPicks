@@ -18,6 +18,7 @@ type GammaQueryValue = string | number | boolean | null | undefined;
 type GammaQueryParams = Record<string, GammaQueryValue>;
 
 const GAMMA_EVENTS_REVALIDATE_SECONDS = 30;
+const GAMMA_REQUEST_TIMEOUT_MS = 9000;
 const GAMMA_EVENTS_LIMIT = 200;
 const GAMMA_EVENTS_MAX_LIMIT = 500;
 const GAMMA_EVENTS_ORDER_FIELDS = new Set([
@@ -64,9 +65,27 @@ const fetchJson = async <T>(
   url: string,
   options: { revalidate?: number } = {},
 ): Promise<T> => {
-  const res = await fetch(url, {
-    next: { revalidate: options.revalidate ?? 0 },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GAMMA_REQUEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      next: { revalidate: options.revalidate ?? 0 },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    console.error('[Polymarket] Gamma request failed', {
+      status: null,
+      url,
+      queryParams: toQueryLog(url),
+      responseBody: null,
+      error,
+    });
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+
   if (!res.ok) {
     const responseBody = await readResponseBody(res);
     console.error('[Polymarket] Gamma request failed', {
@@ -151,7 +170,11 @@ const fetchEventsPage = async (
     };
   } catch (error) {
     if (!(error instanceof PolymarketRequestError) || error.status !== 422) {
-      throw error;
+      console.error('[Polymarket] Gamma events page failed; using empty page', {
+        url,
+        error,
+      });
+      return { events: [], fromFallback: false };
     }
 
     const fallbackUrl = buildEventsUrl({
@@ -174,17 +197,12 @@ const fetchEventsPage = async (
         fromFallback: true,
       };
     } catch (fallbackError) {
-      if (
-        fallbackError instanceof PolymarketRequestError &&
-        fallbackError.status === 422
-      ) {
-        console.error('[Polymarket] Gamma events fallback returned 422; using empty list', {
-          url,
-          fallbackUrl,
-        });
-        return { events: [], fromFallback: true };
-      }
-      throw fallbackError;
+      console.error('[Polymarket] Gamma events fallback failed; using empty page', {
+        url,
+        fallbackUrl,
+        error: fallbackError,
+      });
+      return { events: [], fromFallback: true };
     }
   }
 };
